@@ -1,0 +1,23 @@
+{
+  "name": "educlass-backend",
+  "version": "1.0.0",
+  "description": "EduClass Premium Backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "docx": "^9.6.1",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "groq-sdk": "^1.1.2",
+    "multer": "^2.1.1",
+    "pdfkit": "^0.18.0",
+    "uuid": "^14.0.0"
+  }
+}
