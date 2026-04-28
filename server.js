@@ -151,44 +151,119 @@ app.delete("/clase/:id", (req,res) => {
 // ======================================================
 
 // Crear tarea con lista de estudiantes
+// ======================================================
+//  SISTEMA DE ESTUDIANTES Y TAREAS
+// ======================================================
+
+// Registro de estudiante (cuenta propia)
+app.post("/registro-estudiante", async (req,res) => {
+  try {
+    const { nombre, usuario, password, grado, institucion } = req.body;
+    if (!nombre||!usuario||!password) return res.status(400).json({ mensaje:"Completa nombre, usuario y contraseña" });
+    const db = leerDB();
+    if (!db.estudiantesReg) db.estudiantesReg = [];
+    if (db.estudiantesReg.find(e=>e.usuario===usuario)) return res.status(400).json({ mensaje:"Ese usuario ya existe" });
+    const hash = await bcrypt.hash(password,10);
+    const nuevo = { id:uuidv4(), nombre, usuario, password:hash, grado:grado||"", institucion:institucion||"", creadoEn:new Date().toISOString() };
+    db.estudiantesReg.push(nuevo);
+    guardarDB(db);
+    res.json({ mensaje:"Registro exitoso ✅" });
+  } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
+});
+
+// Login estudiante con cuenta propia
+app.post("/login-estudiante-reg", async (req,res) => {
+  try {
+    const { usuario, password } = req.body;
+    const db = leerDB();
+    if (!db.estudiantesReg) db.estudiantesReg = [];
+    const est = db.estudiantesReg.find(e=>e.usuario===usuario);
+    if (!est) return res.status(401).json({ mensaje:"Usuario no encontrado" });
+    const ok = await bcrypt.compare(password||"", est.password);
+    if (!ok) return res.status(401).json({ mensaje:"Contraseña incorrecta" });
+    const { password:_, ...pub } = est;
+    // Buscar tareas asignadas
+    const tareas = (db.tareas||[]).filter(t=>(t.estudiantesReg||[]).includes(est.id)||
+      (db.estudiantesTemp||[]).find(et=>et.estudianteRegId===est.id));
+    res.json({ ok:true, estudiante:pub });
+  } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
+});
+
+// Obtener tareas del estudiante registrado
+app.get("/mis-tareas-estudiante/:estudianteId", (req,res) => {
+  try {
+    const db = leerDB();
+    const estudianteId = req.params.estudianteId;
+    // Tareas donde el estudiante está en la lista por nombre o id
+    const tareasAsignadas = (db.tareas||[]).filter(t=>{
+      const enLista = (t.estudiantesAsignados||[]).find(e=>e.estudianteRegId===estudianteId);
+      return enLista || (t.estudiantesReg||[]).includes(estudianteId);
+    }).map(t=>{
+      const entrega = (db.entregas||[]).find(e=>e.tareaId===t.id && e.estudianteRegId===estudianteId);
+      return { id:t.id, titulo:t.titulo, descripcion:t.descripcion, tipo:t.tipo, area:t.area, grado:t.grado,
+               fechaEntrega:t.fechaEntrega, codigo:t.codigo, estado:t.estado,
+               entregada:!!entrega, calificacion:entrega?.calificacion||null,
+               comentario:entrega?.comentario||"", actividad:t.actividad };
+    });
+    res.json({ tareas:tareasAsignadas });
+  } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
+});
+
+// Crear tarea con tipo de actividad
 app.post("/crear-tarea", (req,res) => {
   try {
-    const { docenteId,claseId,titulo,descripcion,area,grado,fecha,fechaEntrega,estudiantesLista } = req.body;
+    const { docenteId, titulo, descripcion, tipo, actividad, area, grado, fechaEntrega, estudiantesLista } = req.body;
     const db = leerDB();
+    if (!db.estudiantesReg) db.estudiantesReg = [];
 
-    // Generar código único de acceso para la tarea
-    const codigo = Math.random().toString(36).substring(2,8).toUpperCase();
+    const codigo  = Math.random().toString(36).substring(2,8).toUpperCase();
     const tareaId = uuidv4();
 
-    // Crear estudiantes con credenciales
-    const estudiantes = (estudiantesLista||[]).map(nombre => {
-      const user = nombre.toLowerCase().replace(/\s+/g,"").substring(0,10);
+    // Crear cuentas temporales para estudiantes sin cuenta propia
+    const estudiantesTemp = (estudiantesLista||[]).map(nombre => {
+      const user = nombre.toLowerCase().replace(/\s+/g,"").replace(/[^a-z0-9]/g,"").substring(0,10);
       const pass = Math.random().toString(36).substring(2,8);
-      const est = { id:uuidv4(), tareaId, nombre, usuario:user, password:pass, passwordPlain:pass };
+      const est  = { id:uuidv4(), tareaId, nombre, usuario:user, passwordPlain:pass };
       db.estudiantes.push(est);
       return { id:est.id, nombre, usuario:user, password:pass };
     });
 
     const tarea = {
-      id:           tareaId,
+      id:          tareaId,
       docenteId,
-      claseId:      claseId||null,
       titulo,
       descripcion,
+      tipo:        tipo||"taller",      // taller, evaluacion, quiz, completar, seleccion, relacion
+      actividad:   actividad||null,     // preguntas estructuradas
       area,
       grado,
-      fecha:        fecha||new Date().toLocaleDateString("es-CO"),
       fechaEntrega: fechaEntrega||"",
       codigo,
-      linkAcceso:   `http://localhost:3000/tarea/${codigo}`,
-      estudiantes:  estudiantes.map(e=>({id:e.id,nombre:e.nombre,usuario:e.usuario})),
-      creadaEn:     new Date().toISOString(),
-      estado:       "activa"
+      estudiantesAsignados: estudiantesTemp.map(e=>({id:e.id,nombre:e.nombre,usuario:e.usuario})),
+      estudiantesReg: [],               // IDs de estudiantes registrados asignados
+      creadaEn:    new Date().toISOString(),
+      estado:      "activa"
     };
 
     db.tareas.push(tarea);
     guardarDB(db);
-    res.json({ ok:true, tarea, estudiantes, mensaje:"Tarea creada ✅" });
+    res.json({ ok:true, tarea, estudiantes:estudiantesTemp, mensaje:"Tarea creada ✅" });
+  } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
+});
+
+// Asignar estudiante registrado a una tarea por código
+app.post("/unirse-tarea", async (req,res) => {
+  try {
+    const { codigo, estudianteId } = req.body;
+    const db = leerDB();
+    const tarea = db.tareas.find(t=>t.codigo===codigo?.toUpperCase());
+    if (!tarea) return res.status(404).json({ mensaje:"Código incorrecto. Verifica con tu docente." });
+    if (!tarea.estudiantesReg) tarea.estudiantesReg = [];
+    if (!tarea.estudiantesReg.includes(estudianteId)) {
+      tarea.estudiantesReg.push(estudianteId);
+      guardarDB(db);
+    }
+    res.json({ ok:true, tarea:{ id:tarea.id, titulo:tarea.titulo, tipo:tarea.tipo, area:tarea.area, grado:tarea.grado, fechaEntrega:tarea.fechaEntrega, descripcion:tarea.descripcion, actividad:tarea.actividad }, mensaje:"Te uniste a la tarea ✅" });
   } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
 });
 
@@ -196,65 +271,72 @@ app.post("/crear-tarea", (req,res) => {
 app.get("/mis-tareas/:docenteId", (req,res) => {
   try {
     const db = leerDB();
-    const tareas = db.tareas
+    const tareas = (db.tareas||[])
       .filter(t=>t.docenteId===req.params.docenteId)
       .sort((a,b)=>new Date(b.creadaEn)-new Date(a.creadaEn))
       .map(t => {
-        const entregas = db.entregas.filter(e=>e.tareaId===t.id);
-        return { ...t, totalEntregas:entregas.length, totalEstudiantes:t.estudiantes?.length||0 };
+        const entregas = (db.entregas||[]).filter(e=>e.tareaId===t.id);
+        const total    = (t.estudiantesAsignados?.length||0)+(t.estudiantesReg?.length||0);
+        return { ...t, totalEntregas:entregas.length, totalEstudiantes:total };
       });
     res.json({ tareas });
   } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
 });
 
-// Ver tarea por código (para estudiantes)
+// Ver tarea por código
 app.get("/tarea-publica/:codigo", (req,res) => {
   try {
     const db = leerDB();
     const tarea = db.tareas.find(t=>t.codigo===req.params.codigo.toUpperCase());
-    if (!tarea) return res.status(404).json({ mensaje:"Tarea no encontrada. Verifica el código." });
-    res.json({ tarea:{ id:tarea.id, titulo:tarea.titulo, descripcion:tarea.descripcion, area:tarea.area, grado:tarea.grado, fechaEntrega:tarea.fechaEntrega, codigo:tarea.codigo } });
+    if (!tarea) return res.status(404).json({ mensaje:"Tarea no encontrada." });
+    res.json({ tarea });
   } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
 });
 
-// Login estudiante
+// Login estudiante temporal (con credenciales de lista)
 app.post("/login-estudiante", async (req,res) => {
   try {
     const { codigo, usuario, password } = req.body;
     const db = leerDB();
     const tarea = db.tareas.find(t=>t.codigo===codigo?.toUpperCase());
     if (!tarea) return res.status(404).json({ mensaje:"Código de tarea incorrecto" });
-    const est = db.estudiantes.find(e=>e.tareaId===tarea.id && e.usuario===usuario);
+    const est = (db.estudiantes||[]).find(e=>e.tareaId===tarea.id && e.usuario===usuario);
     if (!est) return res.status(401).json({ mensaje:"Usuario no encontrado en esta tarea" });
     if (est.passwordPlain !== password) return res.status(401).json({ mensaje:"Contraseña incorrecta" });
-    // Ver si ya entregó
-    const entrega = db.entregas.find(e=>e.tareaId===tarea.id && e.estudianteId===est.id);
+    const entrega = (db.entregas||[]).find(e=>e.tareaId===tarea.id && e.estudianteId===est.id);
     res.json({ ok:true, estudiante:{ id:est.id, nombre:est.nombre, usuario:est.usuario }, tarea, yaEntrego:!!entrega, entrega:entrega||null });
   } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
 });
 
-// Entregar tarea (estudiante)
+// Entregar tarea
 app.post("/entregar-tarea", uploadEntrega.single("archivo"), async (req,res) => {
   try {
-    const { tareaId, estudianteId, respuesta } = req.body;
+    const { tareaId, estudianteId, estudianteRegId, respuesta, respuestasActividad } = req.body;
     const db = leerDB();
-    const est = db.estudiantes.find(e=>e.id===estudianteId);
+    const estId = estudianteId||estudianteRegId;
+    const est   = (db.estudiantes||[]).find(e=>e.id===estId) ||
+                  (db.estudiantesReg||[]).find(e=>e.id===estId);
     if (!est) return res.status(404).json({ mensaje:"Estudiante no encontrado" });
-    // Actualizar o crear entrega
-    const idx = db.entregas.findIndex(e=>e.tareaId===tareaId && e.estudianteId===estudianteId);
+
+    const idx = (db.entregas||[]).findIndex(e=>e.tareaId===tareaId &&
+      (e.estudianteId===estId||e.estudianteRegId===estId));
+
     const entrega = {
-      id:           idx>=0 ? db.entregas[idx].id : uuidv4(),
+      id:               idx>=0 ? db.entregas[idx].id : uuidv4(),
       tareaId,
-      estudianteId,
+      estudianteId:     estudianteId||null,
+      estudianteRegId:  estudianteRegId||null,
       nombreEstudiante: est.nombre,
-      respuesta:    respuesta||"",
-      archivoPath:  req.file ? `uploads/entregas/${req.file.filename}` : (idx>=0 ? db.entregas[idx].archivoPath : ""),
-      archivoNombre:req.file ? req.file.originalname : (idx>=0 ? db.entregas[idx].archivoNombre : ""),
-      entregadoEn:  new Date().toISOString(),
-      calificacion: idx>=0 ? db.entregas[idx].calificacion : null,
-      comentario:   idx>=0 ? db.entregas[idx].comentario   : "",
-      estado:       "entregado"
+      respuesta:        respuesta||"",
+      respuestasActividad: respuestasActividad ? JSON.parse(respuestasActividad) : null,
+      archivoPath:      req.file ? `uploads/entregas/${req.file.filename}` : (idx>=0 ? db.entregas[idx].archivoPath : ""),
+      archivoNombre:    req.file ? req.file.originalname : (idx>=0 ? db.entregas[idx].archivoNombre : ""),
+      entregadoEn:      new Date().toISOString(),
+      calificacion:     idx>=0 ? db.entregas[idx].calificacion : null,
+      comentario:       idx>=0 ? db.entregas[idx].comentario : "",
+      estado:           "entregado"
     };
+
     if (idx>=0) db.entregas[idx] = entrega;
     else db.entregas.push(entrega);
     guardarDB(db);
@@ -262,53 +344,48 @@ app.post("/entregar-tarea", uploadEntrega.single("archivo"), async (req,res) => 
   } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
 });
 
-// Ver entregas de una tarea (docente)
+// Ver entregas de una tarea
 app.get("/entregas-tarea/:tareaId", (req,res) => {
   try {
     const db = leerDB();
     const tarea = db.tareas.find(t=>t.id===req.params.tareaId);
-    if (!tarea) return res.status(404).json({ mensaje:"Tarea no encontrada" });
-    const entregas = db.entregas.filter(e=>e.tareaId===req.params.tareaId);
-    // Agregar estudiantes que NO han entregado
-    const sinEntregar = (tarea.estudiantes||[])
-      .filter(e=>!entregas.find(en=>en.estudianteId===e.id))
+    if (!tarea) return res.status(404).json({ mensaje:"No encontrada" });
+    const entregas     = (db.entregas||[]).filter(e=>e.tareaId===req.params.tareaId);
+    const asignados    = tarea.estudiantesAsignados||[];
+    const regAsignados = (tarea.estudiantesReg||[]).map(id=>{
+      const est = (db.estudiantesReg||[]).find(e=>e.id===id);
+      return est ? { id:est.id, nombre:est.nombre } : null;
+    }).filter(Boolean);
+    const todosAsignados = [...asignados, ...regAsignados];
+    const sinEntregar = todosAsignados.filter(e=>!entregas.find(en=>en.estudianteId===e.id||en.estudianteRegId===e.id))
       .map(e=>({ estudianteId:e.id, nombreEstudiante:e.nombre, estado:"pendiente" }));
-    res.json({ entregas, sinEntregar, total:tarea.estudiantes?.length||0 });
+    res.json({ entregas, sinEntregar, total:todosAsignados.length });
   } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
 });
 
-// Calificar entrega (docente)
+// Calificar entrega
 app.post("/calificar-entrega", (req,res) => {
   try {
     const { entregaId, calificacion, comentario } = req.body;
     const db  = leerDB();
-    const idx = db.entregas.findIndex(e=>e.id===entregaId);
-    if (idx===-1) return res.status(404).json({ mensaje:"Entrega no encontrada" });
-    db.entregas[idx].calificacion   = calificacion;
-    db.entregas[idx].comentario     = comentario||"";
-    db.entregas[idx].calificadoEn   = new Date().toISOString();
-    db.entregas[idx].estado         = "calificado";
+    const idx = (db.entregas||[]).findIndex(e=>e.id===entregaId);
+    if (idx===-1) return res.status(404).json({ mensaje:"No encontrada" });
+    db.entregas[idx].calificacion = calificacion;
+    db.entregas[idx].comentario   = comentario||"";
+    db.entregas[idx].calificadoEn = new Date().toISOString();
+    db.entregas[idx].estado       = "calificado";
     guardarDB(db);
-    res.json({ ok:true, entrega:db.entregas[idx], mensaje:"Calificación guardada ✅" });
+    res.json({ ok:true, entrega:db.entregas[idx] });
   } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
 });
 
-// Ver calificación (estudiante)
-app.get("/mi-calificacion/:tareaId/:estudianteId", (req,res) => {
-  try {
-    const db = leerDB();
-    const entrega = db.entregas.find(e=>e.tareaId===req.params.tareaId && e.estudianteId===req.params.estudianteId);
-    if (!entrega) return res.json({ calificacion:null, mensaje:"Aún no has entregado esta tarea" });
-    res.json({ entrega });
-  } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
-});
-
-// Descargar archivo entregado
+// Descargar archivo entrega
 app.get("/descargar-entrega/:tareaId/:estudianteId", (req,res) => {
   try {
     const db = leerDB();
-    const entrega = db.entregas.find(e=>e.tareaId===req.params.tareaId && e.estudianteId===req.params.estudianteId);
-    if (!entrega||!entrega.archivoPath) return res.status(404).json({ mensaje:"Archivo no encontrado" });
+    const entrega = (db.entregas||[]).find(e=>e.tareaId===req.params.tareaId &&
+      (e.estudianteId===req.params.estudianteId||e.estudianteRegId===req.params.estudianteId));
+    if (!entrega?.archivoPath) return res.status(404).json({ mensaje:"Archivo no encontrado" });
     const abs = path.join(__dirname, entrega.archivoPath);
     if (!fs.existsSync(abs)) return res.status(404).json({ mensaje:"Archivo no existe" });
     res.download(abs, entrega.archivoNombre||"entrega.pdf");
@@ -319,13 +396,49 @@ app.get("/descargar-entrega/:tareaId/:estudianteId", (req,res) => {
 app.delete("/tarea/:id", (req,res) => {
   try {
     const db = leerDB();
-    db.tareas      = db.tareas.filter(t=>t.id!==req.params.id);
-    db.estudiantes = db.estudiantes.filter(e=>e.tareaId!==req.params.id);
-    db.entregas    = db.entregas.filter(e=>e.tareaId!==req.params.id);
+    db.tareas      = (db.tareas||[]).filter(t=>t.id!==req.params.id);
+    db.estudiantes = (db.estudiantes||[]).filter(e=>e.tareaId!==req.params.id);
+    db.entregas    = (db.entregas||[]).filter(e=>e.tareaId!==req.params.id);
     guardarDB(db);
     res.json({ ok:true });
   } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
 });
+
+// Generar actividad con IA según tipo
+app.post("/generar-actividad", async (req,res) => {
+  try {
+    const { tipo, tema, area, grado, cantidad } = req.body;
+    const n = cantidad||5;
+
+    const prompts = {
+      quiz:       `Genera un quiz de ${n} preguntas de selección múltiple sobre "${tema}" para ${area} grado ${grado}° en Colombia. Cada pregunta debe tener 4 opciones (A,B,C,D) y la respuesta correcta indicada. Formato JSON estricto: {"preguntas":[{"pregunta":"texto","opciones":["A. texto","B. texto","C. texto","D. texto"],"correcta":"A"}]}. Solo JSON, sin texto adicional.`,
+      completar:  `Genera ${n} oraciones para completar el espacio en blanco sobre "${tema}" para ${area} grado ${grado}°. Formato JSON: {"preguntas":[{"enunciado":"La fotosíntesis ocurre en ___","respuesta":"las hojas"}]}. Solo JSON.`,
+      verdadero_falso: `Genera ${n} afirmaciones de Verdadero o Falso sobre "${tema}" para ${area} grado ${grado}°. Formato JSON: {"preguntas":[{"afirmacion":"texto","respuesta":"Verdadero"}]}. Solo JSON.`,
+      relacionar: `Genera ${n} pares para relacionar conceptos sobre "${tema}" para ${area} grado ${grado}°. Formato JSON: {"pares":[{"columnaA":"concepto","columnaB":"definicion"}]}. Solo JSON.`,
+      taller:     `Genera un taller con ${n} preguntas abiertas sobre "${tema}" para ${area} grado ${grado}°. Formato JSON: {"preguntas":[{"numero":1,"pregunta":"texto","tipo":"abierta"}]}. Solo JSON.`,
+      evaluacion: `Genera una evaluación mixta sobre "${tema}" para ${area} grado ${grado}°. Incluye: 3 preguntas de selección múltiple, 2 de completar, 2 verdadero/falso y 1 pregunta abierta. Formato JSON: {"preguntas":[{"numero":1,"tipo":"seleccion","pregunta":"texto","opciones":["A. x","B. y","C. z","D. w"],"correcta":"A"},...]}. Solo JSON.`,
+    };
+
+    const prompt = prompts[tipo] || prompts.taller;
+    const resp = await groq.chat.completions.create({
+      model:"llama-3.3-70b-versatile", max_tokens:2000, temperature:0.5,
+      messages:[
+        { role:"system", content:"Eres un experto en evaluación educativa colombiana. Responde SOLO con JSON válido, sin markdown, sin texto adicional." },
+        { role:"user", content:prompt }
+      ]
+    });
+
+    let texto = resp.choices[0].message.content.trim();
+    texto = texto.replace(/```json|```/g,"").trim();
+    try {
+      const actividad = JSON.parse(texto);
+      res.json({ ok:true, actividad, tipo });
+    } catch(e) {
+      res.json({ ok:true, actividad:{ preguntas:[] }, tipo, raw:texto });
+    }
+  } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
+});
+
 
 // ======================================================
 //  GENERAR GUÍA
