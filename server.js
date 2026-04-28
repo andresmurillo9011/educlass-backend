@@ -343,52 +343,66 @@ app.post("/generar-guia", async (req,res) => {
     const numHoras  = Math.round(durMin/55);
     const durTexto  = numHoras===1?"1 hora de clase (55 minutos)":`${numHoras} horas de clase (${durMin} minutos)`;
 
-    const prompt = `Eres un pedagogo colombiano experto. Crea una guía PREMIUM para nivel ${nivelEducativo||nivel}.
+    const prompt = `Eres un pedagogo colombiano experto con 20 años de experiencia. Crea una guía PREMIUM, EXTENSA y DETALLADA para nivel ${nivelEducativo||nivel}. El texto debe ser 15% más extenso, con datos verificables e indicando fuentes.
 
 DATOS:
 - Institución: ${institucion||"I.E."} | Docente: ${docente||"Docente"} (${cargo||"Docente"})
 - Ciudad: ${ciudad||"Colombia"} | Área: ${area} | Grado: ${grado}° | Periodo: ${periodo||"1"}
 - Fecha: ${fecha||new Date().toLocaleDateString("es-CO")} | Tema: ${tema} | Duración: ${durTexto}
+- Nivel: ${nivelEducativo||nivel}
 
-ESTRATEGIAS:
-- Apertura: ${tipoApertura} | Desarrollo: ${estratDesarrollo}
-- Retroalimentación: ${retroalimentacion} | Cierre: ${tipoCierre}
-- Tarea: ${dejaTarea?estratTarea:"Sin tarea"}
+NIVEL EDUCATIVO SELECCIONADO: ${nivelEducativo||nivel} — USA ESTE NIVEL EN TODO EL DOCUMENTO
+ESTRATEGIAS: Apertura: ${tipoApertura} | Desarrollo: ${estratDesarrollo} | Retro: ${retroalimentacion} | Cierre: ${tipoCierre} | Tarea: ${dejaTarea?estratTarea:"Sin tarea"}
 
-Estructura EXACTA:
 ===APERTURA===
 TIPO: ${tipoApertura}
-[Contenido creativo contextualizado en Colombia]
+[Contenido creativo contextualizado en Colombia para ${nivel}. Mínimo 8 líneas.]
 
 ===SABERES_PREVIOS===
-[4 preguntas diagnósticas para ${edadAprox} años]
+Escribe EXACTAMENTE 4 preguntas diagnósticas sobre "${tema}", una por línea, en este formato:
+1. (pregunta uno)
+2. (pregunta dos)
+3. (pregunta tres)
+4. (pregunta cuatro)
 
 ===DESARROLLO===
 ESTRATEGIA: ${estratDesarrollo}
-[Contenido temático COMPLETO. Mínimo 4 subtemas. Ejemplos colombianos. Preguntas intermedias en **negrita**]
+[Contenido MUY COMPLETO sobre "${tema}". Mínimo 5 subtemas con título ## cada uno. Ejemplos colombianos. Datos con fuente entre paréntesis. Preguntas reflexivas en **negrita** al final de cada subtema.]
 
 ===RETROALIMENTACION===
 ESTRATEGIA: ${retroalimentacion}
 [Actividad completa]
 
 ===TALLER===
-[5 secciones: COMPRENSIÓN, APLICACIÓN, PENSAMIENTO CRÍTICO, CREATIVIDAD, INVESTIGACIÓN]
+Escribe el taller con EXACTAMENTE estas 5 secciones numeradas, cada una en su propia línea:
+1. COMPRENSIÓN: Escribe 2 preguntas sobre el contenido de "${tema}"
+2. APLICACIÓN PRÁCTICA: Describe 1 actividad concreta donde el estudiante aplique lo aprendido
+3. PENSAMIENTO CRÍTICO: Escribe 1 pregunta que exija análisis profundo sobre "${tema}"
+4. CREATIVIDAD: Describe 1 actividad creativa relacionada con "${tema}"
+5. INVESTIGACIÓN: Indica 1 consulta breve con una fuente sugerida específica
 
 ===CIERRE===
 ESTRATEGIA: ${tipoCierre}
-[Síntesis, metacognición, conexión cotidiana]
+[3 pasos de síntesis, metacognición, conexión cotidiana]
 
 ===TAREA===
-${dejaTarea?`ESTRATEGIA: ${estratTarea}\n[Tarea concreta para ${nivel}]`:"Sin tarea para esta sesión."}
+${dejaTarea?`ESTRATEGIA: ${estratTarea}\n[Tarea con instrucciones claras]`:"Sin tarea."}
 
 ===EXTRAS===
-COMPETENCIA: [competencia específica]
-DBA: [DBA oficial colombiano]
-EVIDENCIA: [evidencia observable]
-CRITERIO: [criterio de evaluación]
-RECURSOS: [5 recursos específicos]
+OBJETIVO: Redacta el objetivo de aprendizaje COMPLETO con verbo en infinitivo, específico para "${tema}" en nivel ${nivelEducativo||nivel}, grado ${grado}°. Mínimo 2 líneas. NO uses corchetes.
+COMPETENCIA: Redacta la competencia específica del área ${area} para grado ${grado}° en Colombia. Mínimo 1 línea completa.
+DBA: Redacta el Derecho Básico de Aprendizaje COMPLETO Y LITERAL del área ${area} para grado ${grado}° según el MEN Colombia. ESCRÍBELO COMPLETO, no lo cites con decreto ni URL. Ejemplo de formato correcto: "DBA #3: Comprende que los seres vivos...". NUNCA escribas "Decreto" ni URL.
+ESTANDAR: Redacta el Estándar Básico de Competencia COMPLETO del área ${area} para grado ${grado}° según el MEN. ESCRÍBELO COMPLETO en texto. Ejemplo: "Identifico y describo características de los seres vivos...". NUNCA escribas URL ni número de resolución.
+INDICADOR1: Redacta el indicador de competencia SABER: qué conceptos debe conocer el estudiante sobre "${tema}". Texto completo.
+INDICADOR2: Redacta el indicador de competencia HACER: qué debe poder hacer el estudiante con "${tema}". Texto completo.
+INDICADOR3: Redacta el indicador de competencia SER: qué actitudes debe demostrar el estudiante. Texto completo.
+EVIDENCIA: Redacta la evidencia de aprendizaje observable y concreta para "${tema}". Texto completo.
+CRITERIO: Redacta la escala de valoración: Bajo (descripción) / Básico (descripción) / Alto (descripción) / Superior (descripción). Todo en texto.
+EVALUACION: Redacta una evaluación completa sobre "${tema}" con: 3 preguntas abiertas numeradas, 2 preguntas de selección múltiple con opciones A/B/C/D, y 1 actividad práctica evaluativa. Todo numerado y en formato de lista.
+RECURSOS: Escribe 5 recursos específicos numerados (1. 2. 3. 4. 5.) apropiados para las estrategias ${estratDesarrollo} y ${tipoApertura} en nivel ${nivelEducativo||nivel}.
+WEBGRAFIA: Escribe 3 fuentes reales consultadas para esta guía en formato APA: Apellido, N. (año). Título del recurso. URL real.
 
-Redacta en español impecable. Todo contextualizado en Colombia.`;
+Redacta en español impecable. Todo contextualizado en Colombia. Nunca seas genérico.`;
 
     const resp = await groq.chat.completions.create({
       model:"llama-3.3-70b-versatile", max_tokens:4096, temperature:0.7,
@@ -406,7 +420,14 @@ Redacta en español impecable. Todo contextualizado en Colombia.`;
 // ======================================================
 app.post("/exportar-word", async (req,res) => {
   try {
-    const { contenido,institucion,docente,area,grado,periodo,fecha,tema,duracion,logoPath,banderaPath,cargo,ciudad } = req.body;
+    const { contenido,institucion,docente,area,grado,periodo,fecha,tema,duracion,logoPath,banderaPath,cargo,ciudad,nivelEducativo } = req.body;
+    const gradoN = parseInt(grado)||0;
+    const nivelLabel = nivelEducativo==="preescolar"?"Preescolar":
+                       nivelEducativo==="primaria"?"Primaria":
+                       nivelEducativo==="media_tecnica"?"Media Técnica":
+                       nivelEducativo==="bachillerato"?"Bachillerato":
+                       gradoN===0?"Preescolar":gradoN<=5?"Primaria":
+                       gradoN<=9?"Bachillerato":"Media/Bachillerato";
     const { Document,Packer,Paragraph,TextRun,Table,TableRow,TableCell,
             AlignmentType,BorderStyle,WidthType,ShadingType,VerticalAlign,ImageRun } = require("docx");
 
@@ -431,8 +452,8 @@ app.post("/exportar-word", async (req,res) => {
     // Ancho total: 12240 - 567*2 = 11106 DXA (márgenes 1cm)
     const TW = 11106;
 
-    const txt = (text,opts={}) => new TextRun({ text,font:"Times New Roman",size:opts.size||22,bold:opts.bold||false,italics:opts.italic||false,color:opts.color||NEGRO,...opts });
-    const par = (children,opts={}) => new Paragraph({ children,alignment:opts.align||AlignmentType.LEFT,spacing:opts.spacing||{before:40,after:40},...opts });
+    const txt = (text,opts={}) => new TextRun({ text,font:"Times New Roman",size:opts.size||24,bold:opts.bold||false,italics:opts.italic||false,color:opts.color||NEGRO,...opts });
+    const par = (children,opts={}) => new Paragraph({ children,alignment:opts.align||AlignmentType.BOTH,spacing:opts.spacing||{before:40,after:40},...opts });
     const cel = (children,opts={}) => new TableCell({
       width:{ size:opts.w||1000,type:WidthType.DXA },
       margins:{ top:80,bottom:80,left:100,right:100 },
@@ -475,7 +496,7 @@ app.post("/exportar-word", async (req,res) => {
 
     // PLAN DE AULA
     children.push(new Table({ width:{size:TW,type:WidthType.DXA}, columnWidths:[TW],
-      rows:[new TableRow({ children:[cel([par([txt("PLAN DE AULA",{bold:true,size:28,color:AZUL})],{align:AlignmentType.CENTER,spacing:{before:80,after:80}})],{w:TW,fill:AZUL_CL,borders:bAllA})]})]
+      rows:[new TableRow({ children:[cel([par([txt("PLAN DE AULA",{bold:true,size:30,color:AZUL})],{align:AlignmentType.CENTER,spacing:{before:80,after:80}})],{w:TW,fill:AZUL_CL,borders:bAllA})]})]
     }));
 
     // DOCENTE / SEDE
@@ -498,7 +519,7 @@ app.post("/exportar-word", async (req,res) => {
     children.push(new Table({ width:{size:TW,type:WidthType.DXA}, columnWidths:[c1,c2,c3,c4,c5,c6,c7,c8,c9,c10v],
       rows:[new TableRow({ children:[
         cel([par([txt("NIVEL",{bold:true,size:18})])],{w:c1,fill:GRIS,borders:bAll}),
-        cel([par([txt("PREESCOLAR",{size:18})])],{w:c2,borders:bAll}),
+        cel([par([txt(nivelLabel,{size:18})])],{w:c2,borders:bAll}),
         cel([par([txt("GRADO",{bold:true,size:18})])],{w:c3,fill:GRIS,borders:bAll}),
         cel([par([txt(grado||"0°",{size:18})])],{w:c4,borders:bAll}),
         cel([par([txt("PERÍODO",{bold:true,size:18})])],{w:c5,fill:GRIS,borders:bAll}),
@@ -515,12 +536,21 @@ app.post("/exportar-word", async (req,res) => {
       rows:[new TableRow({ children:[cel([par([txt(label,{bold:true})])],{w:LBL,fill:GRIS,borders:bAll}),cel([par([txt(value)])],{w:VAL,borders:bAll})] })]
     });
 
-    const objetivos = getBloque("EXTRAS").replace(/COMPETENCIA:.*/ms,"").replace(/DBA:.*/ms,"").trim()||"Desarrollar habilidades cognitivas, comunicativas y socioafectivas.";
-    const recursos  = getBloque("EXTRAS").match(/RECURSOS[:\s]+(.*)/i)?.[1]?.trim()||"Talento humano, cuaderno, lápiz, colores, material del entorno.";
+    const extrasRaw  = getBloque("EXTRAS");
+    const objetivos  = extrasRaw.match(/OBJETIVO[:\s]+([^\n]+)/i)?.[1]?.trim()||
+                      extrasRaw.match(/OBJETIVO[:\s]+([\s\S]*?)(?=COMPETENCIA:|ESTANDAR:|DBA:|INDICADOR|$)/i)?.[1]?.trim()||
+                      "Desarrollar habilidades cognitivas, comunicativas y socioafectivas a través del tema propuesto.";
+    const recursos   = extrasRaw.match(/RECURSOS[:\s]+([\s\S]*?)(?=WEBGRAFIA:|$)/i)?.[1]?.trim()||"Talento humano, cuaderno, lápiz, colores, material del entorno.";
+    const webgrafia  = extrasRaw.match(/WEBGRAFIA[:\s]+([\s\S]*?)$/i)?.[1]?.trim()||"MEN - lineamientos curriculares, DBA oficiales, textos escolares.";
+    const evaluacion = extrasRaw.match(/EVALUACION[:\s]+([\s\S]*?)(?=RECURSOS:|WEBGRAFIA:|$)/i)?.[1]?.trim()||"Evaluación oral y escrita sobre el tema trabajado.";
+    const ind1 = extrasRaw.match(/INDICADOR1[:\s]+([\s\S]*?)(?=INDICADOR2:|$)/i)?.[1]?.trim()||"";
+    const ind2 = extrasRaw.match(/INDICADOR2[:\s]+([\s\S]*?)(?=INDICADOR3:|$)/i)?.[1]?.trim()||"";
+    const ind3 = extrasRaw.match(/INDICADOR3[:\s]+([\s\S]*?)(?=EVIDENCIA:|$)/i)?.[1]?.trim()||"";
 
     children.push(fila2("TEMA",tema||""));
-    children.push(fila2("OBJETIVO",objetivos.substring(0,300)));
-    children.push(fila2("RECURSOS",recursos.substring(0,300)));
+    children.push(fila2("OBJETIVO",objetivos.substring(0,400)));
+    children.push(fila2("RECURSOS",recursos.substring(0,400)));
+    children.push(fila2("WEBGRAFÍA",webgrafia.substring(0,400)));
 
     // REFERENTES
     children.push(par([txt("")]));
@@ -529,32 +559,34 @@ app.post("/exportar-word", async (req,res) => {
     }));
 
     const extrasTexto = getBloque("EXTRAS");
-    const dba  = extrasTexto.match(/DBA[:\s]+([\s\S]*?)(?=EVIDENCIA:|CRITERIO:|RECURSOS:|$)/i)?.[1]?.trim()||"Comprende y aplica los conceptos trabajados.";
-    const comp = extrasTexto.match(/COMPETENCIA[:\s]+([\s\S]*?)(?=DBA:|EVIDENCIA:|$)/i)?.[1]?.trim()||"Desarrolla competencias disciplinares.";
+    const dba2 = extrasTexto.match(/DBA[:\s]+([\s\S]*?)(?=INDICADOR|EVIDENCIA:|CRITERIO:|RECURSOS:|$)/i)?.[1]?.trim()||"Comprende y aplica los conceptos trabajados.";
+    const comp2= extrasTexto.match(/ESTANDAR[:\s]+([\s\S]*?)(?=DBA:|INDICADOR|EVIDENCIA:|$)/i)?.[1]?.trim()||
+                  extrasTexto.match(/COMPETENCIA[:\s]+([\s\S]*?)(?=DBA:|EVIDENCIA:|$)/i)?.[1]?.trim()||"Desarrolla competencias disciplinares.";
     const evid = extrasTexto.match(/EVIDENCIA[:\s]+([\s\S]*?)(?=CRITERIO:|RECURSOS:|$)/i)?.[1]?.trim()||"Demuestra comprensión de los conceptos.";
-    const LR=Math.round(TW*0.22), VR=TW-Math.round(TW*0.22);
+    const LR=Math.round(TW*0.28), VR=TW-Math.round(TW*0.28);
 
     children.push(new Table({ width:{size:TW,type:WidthType.DXA}, columnWidths:[LR,VR],
       rows:[
-        new TableRow({ children:[cel([par([txt("ESTÁNDARES BÁSICOS",{bold:true})])],{w:LR,fill:GRIS,borders:bAll}),cel([par([txt(comp.substring(0,400))])],{w:VR,borders:bAll})] }),
-        new TableRow({ children:[cel([par([txt("DBA",{bold:true})])],{w:LR,fill:GRIS,borders:bAll}),cel([par([txt(dba.substring(0,400))])],{w:VR,borders:bAll})] }),
+        new TableRow({ children:[cel([par([txt("ESTÁNDAR BÁSICO DE COMPETENCIA (MEN)",{bold:true})])],{w:LR,fill:GRIS,borders:bAll}),cel([par([txt(comp2.substring(0,400))])],{w:VR,borders:bAll})] }),
+        new TableRow({ children:[cel([par([txt("DBA — DERECHO BÁSICO DE APRENDIZAJE",{bold:true})])],{w:LR,fill:GRIS,borders:bAll}),cel([par([txt((dba2||dba||"Ver DBA oficial MEN").substring(0,400))])],{w:VR,borders:bAll})] }),
       ]
     }));
 
-    const S1=Math.round(TW*0.12), S2=Math.round((TW-Math.round(TW*0.12))/3), S3=S2, S4=TW-S1-S2-S3;
+    // Indicadores de competencia (Saber/Hacer/Ser)
+    const S1=Math.round(TW*0.18), S2=Math.round((TW-Math.round(TW*0.18))/3), S3=S2, S4=TW-S1-S2-S3;
     children.push(new Table({ width:{size:TW,type:WidthType.DXA}, columnWidths:[S1,S2,S3,S4],
       rows:[
         new TableRow({ children:[
-          cel([par([txt("COMPETENCIAS",{bold:true})])],{w:S1,fill:GRIS,borders:bAll}),
+          cel([par([txt("INDICADORES DE COMPETENCIA",{bold:true})])],{w:S1,fill:GRIS,borders:bAll}),
           cel([par([txt("SABER",{bold:true})],{align:AlignmentType.CENTER})],{w:S2,fill:GRIS,borders:bAll}),
           cel([par([txt("HACER",{bold:true})],{align:AlignmentType.CENTER})],{w:S3,fill:GRIS,borders:bAll}),
           cel([par([txt("SER",{bold:true})],{align:AlignmentType.CENTER})],{w:S4,fill:GRIS,borders:bAll}),
         ]}),
         new TableRow({ children:[
-          cel([par([txt("")])],{w:S1,borders:bAll}),
-          cel([par([txt(getBloque("DESARROLLO").substring(0,200)||"Comprende los conceptos.")])],{w:S2,borders:bAll}),
-          cel([par([txt(getBloque("TALLER").substring(0,200)||"Aplica lo aprendido.")])],{w:S3,borders:bAll}),
-          cel([par([txt(getBloque("CIERRE").substring(0,150)||"Actúa con respeto.")])],{w:S4,borders:bAll}),
+          cel([par([txt("Indicadores por dimensión")])],{w:S1,borders:bAll}),
+          cel([par([txt((ind1||"Comprende los conceptos fundamentales del tema.").substring(0,250))])],{w:S2,borders:bAll}),
+          cel([par([txt((ind2||"Aplica lo aprendido en situaciones prácticas.").substring(0,250))])],{w:S3,borders:bAll}),
+          cel([par([txt((ind3||"Demuestra actitudes de respeto y colaboración.").substring(0,200))])],{w:S4,borders:bAll}),
         ]}),
       ]
     }));
@@ -566,10 +598,11 @@ app.post("/exportar-word", async (req,res) => {
     }));
 
     const secciones=[
-      {t:"EXPLORACIÓN (SABERES PREVIOS)",    c:(getBloque("SABERES_PREVIOS")||getBloque("APERTURA")).substring(0,500)},
-      {t:"ESTRUCTURACIÓN (PRÁCTICA)",        c:(getBloque("DESARROLLO")+" "+getBloque("TALLER")).substring(0,600)},
-      {t:"TRANSFERENCIA (VALORACIÓN)",       c:getBloque("RETROALIMENTACION").substring(0,400)},
-      {t:"REFUERZO (INTEGRACIÓN A CONTEXTOS COTIDIANOS)", c:(getBloque("CIERRE")+" "+getBloque("TAREA")).substring(0,400)},
+      {t:"INICIO DE LA CLASE (APERTURA Y MOTIVACIÓN)", c:getBloque("APERTURA").substring(0,500)},
+      {t:"EXPLORACIÓN (SABERES PREVIOS)",    c:getBloque("SABERES_PREVIOS").split("\n").filter(l=>l.trim()).map((l,i)=>(i+1)+". "+l.replace(/^\d+\.\s*/,"")).join("\n").substring(0,500)},
+      {t:"ESTRUCTURACIÓN (PRÁCTICA Y DESARROLLO)", c:(getBloque("DESARROLLO")+" "+getBloque("TALLER")).substring(0,700)},
+      {t:"TRANSFERENCIA (VALORACIÓN)",       c:getBloque("RETROALIMENTACION").substring(0,500)},
+      {t:"REFUERZO (INTEGRACIÓN A CONTEXTOS COTIDIANOS)", c:(getBloque("CIERRE")+" "+getBloque("TAREA")).substring(0,500)},
     ];
     for (const s of secciones) {
       children.push(new Table({ width:{size:TW,type:WidthType.DXA}, columnWidths:[TW],
@@ -586,17 +619,18 @@ app.post("/exportar-word", async (req,res) => {
       rows:[new TableRow({ children:[cel([par([txt("EVALUACIÓN",{bold:true,color:BLANCO})],{align:AlignmentType.CENTER})],{w:TW,fill:AZUL,borders:bAllA})]})]
     }));
     const EV=Math.round(TW*0.6), ET=TW-Math.round(TW*0.6);
+    const evalText = evaluacion.substring(0,600)||"Evaluación oral y escrita pertinente al tema.";
     children.push(new Table({ width:{size:TW,type:WidthType.DXA}, columnWidths:[EV,ET],
       rows:[
-        new TableRow({ children:[cel([par([txt("DESEMPEÑOS ESPERADOS",{bold:true})],{align:AlignmentType.CENTER})],{w:EV,fill:GRIS,borders:bAll}),cel([par([txt("TIPO DE EVALUACIÓN",{bold:true})],{align:AlignmentType.CENTER})],{w:ET,fill:GRIS,borders:bAll})] }),
-        new TableRow({ children:[cel([par([txt(evid.substring(0,300))])],{w:EV,borders:bAll}),cel([par([txt("Valoración de actividades. Oral y escrita.")])],{w:ET,borders:bAll})] }),
+        new TableRow({ children:[cel([par([txt("DESEMPEÑOS ESPERADOS",{bold:true})],{align:AlignmentType.CENTER})],{w:EV,fill:GRIS,borders:bAll}),cel([par([txt("EVALUACIÓN PERTINENTE",{bold:true})],{align:AlignmentType.CENTER})],{w:ET,fill:GRIS,borders:bAll})] }),
+        new TableRow({ children:[cel([par([txt(evid.substring(0,300))])],{w:EV,borders:bAll}),cel([par([txt(evalText)])],{w:ET,borders:bAll})] }),
       ]
     }));
 
     children.push(new Table({ width:{size:TW,type:WidthType.DXA}, columnWidths:[TW],
       rows:[
-        new TableRow({ children:[cel([par([txt("REFERENCIAS BIBLIOGRÁFICAS",{bold:true})],{align:AlignmentType.CENTER})],{w:TW,fill:GRIS,borders:bAll})] }),
-        new TableRow({ children:[cel([par([txt("MEN - Lineamientos Curriculares, DBA oficiales, Mallas de Aprendizaje, internet, textos escolares.")])],{w:TW,borders:bAll})] }),
+        new TableRow({ children:[cel([par([txt("REFERENCIAS BIBLIOGRÁFICAS Y WEBGRAFÍA",{bold:true})],{align:AlignmentType.CENTER})],{w:TW,fill:GRIS,borders:bAll})] }),
+        new TableRow({ children:[cel([par([txt((webgrafia||"MEN - Lineamientos Curriculares, DBA oficiales, Mallas de Aprendizaje, internet, textos escolares.").substring(0,500))])],{w:TW,borders:bAll})] }),
       ]
     }));
 
@@ -614,7 +648,7 @@ app.post("/exportar-word", async (req,res) => {
     }));
 
     const doc = new Document({
-      styles:{ default:{ document:{ run:{ font:"Times New Roman",size:22 } } } },
+      styles:{ default:{ document:{ run:{ font:"Times New Roman",size:24 } } } },
       sections:[{ properties:{ page:{ size:{width:12240,height:15840}, margin:{top:567,right:567,bottom:567,left:567} } }, children }]
     });
     const buffer = await Packer.toBuffer(doc);
@@ -630,7 +664,14 @@ app.post("/exportar-word", async (req,res) => {
 // ======================================================
 app.post("/exportar-pdf", async (req,res) => {
   try {
-    const { contenido,institucion,docente,area,grado,periodo,fecha,tema,duracion,logoPath,banderaPath,cargo,ciudad } = req.body;
+    const { contenido,institucion,docente,area,grado,periodo,fecha,tema,duracion,logoPath,banderaPath,cargo,ciudad,nivelEducativo } = req.body;
+    const gradoN = parseInt(grado)||0;
+    const nivelLabel = nivelEducativo==="preescolar"?"Preescolar":
+                       nivelEducativo==="primaria"?"Primaria":
+                       nivelEducativo==="media_tecnica"?"Media Técnica":
+                       nivelEducativo==="bachillerato"?"Bachillerato":
+                       gradoN===0?"Preescolar":gradoN<=5?"Primaria":
+                       gradoN<=9?"Bachillerato":"Media/Bachillerato";
     const PDFDocument = require("pdfkit");
 
     const bloques = {};
@@ -699,8 +740,8 @@ app.post("/exportar-pdf", async (req,res) => {
           const w=colWidths[i];
           doc.rect(colX,rowY,w,maxH).fill(cel.fill||BLANCO);
           doc.rect(colX,rowY,w,maxH).lineWidth(0.4).strokeColor(GRIS_B).stroke();
-          doc.font(cel.bold?FB:FN).fontSize(cel.fs||9).fillColor(cel.color||NEGRO)
-             .text(cel.texto||"",colX+4,rowY+4,{width:w-8,align:cel.align||"left"});
+          doc.font(cel.bold?FB:FN).fontSize(cel.fs||10).fillColor(cel.color||NEGRO)
+             .text(cel.texto||"",colX+4,rowY+4,{width:w-8,align:cel.align||(cel.bold?"left":"justify")});
           colX+=w;
         });
         rowY+=maxH;
@@ -710,42 +751,52 @@ app.post("/exportar-pdf", async (req,res) => {
 
     const az =(t,o={})=>({texto:t,fill:AZUL, color:BLANCO,bold:true, fs:9,align:"center",...o});
     const gr =(t,o={})=>({texto:t,fill:GRIS, color:NEGRO, bold:true, fs:9,...o});
-    const nm =(t,o={})=>({texto:t,fill:BLANCO,color:NEGRO, bold:false,fs:9,...o});
+    const nm =(t,o={})=>({texto:t,fill:BLANCO,color:NEGRO, bold:false,fs:10,...o});
 
     // Docente/sede
     tabla([[gr("Nombre del Docente:",{fs:8}),nm(docente||"_____",{fs:8}),gr("Sede:",{fs:8}),nm(institucion||"_____",{fs:8})]], [PW*0.15,PW*0.35,PW*0.1,PW*0.4]);
     tabla([[az("INFORMACIÓN GENERAL",{fs:10})]], [PW]);
-    tabla([[gr("NIVEL",{fs:8}),nm("PREESCOLAR",{fs:8}),gr("GRADO",{fs:8}),nm(grado||"",{fs:8}),gr("PERÍODO",{fs:8}),nm(periodo||"",{fs:8}),gr("ÁREA",{fs:8}),nm(area||"",{fs:8}),gr("SEM",{fs:8}),nm("1",{fs:8})]], [PW*0.07,PW*0.12,PW*0.07,PW*0.07,PW*0.08,PW*0.07,PW*0.07,PW*0.28,PW*0.06,PW*0.11]);
+    tabla([[gr("NIVEL",{fs:8}),nm(nivelLabel,{fs:8}),gr("GRADO",{fs:8}),nm(grado||"",{fs:8}),gr("PERÍODO",{fs:8}),nm(periodo||"",{fs:8}),gr("ÁREA",{fs:8}),nm(area||"",{fs:8}),gr("SEM",{fs:8}),nm("1",{fs:8})]], [PW*0.07,PW*0.12,PW*0.07,PW*0.07,PW*0.08,PW*0.07,PW*0.07,PW*0.28,PW*0.06,PW*0.11]);
     tabla([[gr("TEMA",{fs:8}),nm(tema,{fs:8})]],[PW*0.12,PW*0.88]);
 
-    const obj=getBloque("EXTRAS").replace(/COMPETENCIA:.*/,"").replace(/DBA:.*/,"").trim()||"Desarrollar habilidades cognitivas, comunicativas y socioafectivas.";
-    const rec=getBloque("EXTRAS").match(/RECURSOS[:\s]+(.*)/i)?.[1]?.trim()||"Talento humano, cuaderno, lápiz, colores.";
-    tabla([[gr("OBJETIVO",{fs:8}),nm(obj.substring(0,250),{fs:8})]],[PW*0.12,PW*0.88]);
-    tabla([[gr("RECURSOS",{fs:8}),nm(rec.substring(0,250),{fs:8})]],[PW*0.12,PW*0.88]);
+    const extP   = getBloque("EXTRAS");
+    const obj    = extP.match(/OBJETIVO[:\s]+([^\n]+)/i)?.[1]?.trim()||
+                  extP.match(/OBJETIVO[:\s]+([\s\S]*?)(?=COMPETENCIA:|ESTANDAR:|DBA:|INDICADOR|$)/i)?.[1]?.trim()||
+                  "Desarrollar habilidades cognitivas, comunicativas y socioafectivas a través del tema propuesto.";
+    const rec    = extP.match(/RECURSOS[:\s]+([\s\S]*?)(?=WEBGRAFIA:|$)/i)?.[1]?.trim()||"Talento humano, cuaderno, lápiz, colores.";
+    const webg   = extP.match(/WEBGRAFIA[:\s]+([\s\S]*?)$/i)?.[1]?.trim()||"MEN - lineamientos curriculares, DBA oficiales, textos escolares.";
+    const evalP  = extP.match(/EVALUACION[:\s]+([\s\S]*?)(?=RECURSOS:|WEBGRAFIA:|$)/i)?.[1]?.trim()||"Evaluación oral y escrita sobre el tema trabajado.";
+    const pind1  = extP.match(/INDICADOR1[:\s]+([\s\S]*?)(?=INDICADOR2:|$)/i)?.[1]?.trim()||"Comprende conceptos fundamentales.";
+    const pind2  = extP.match(/INDICADOR2[:\s]+([\s\S]*?)(?=INDICADOR3:|$)/i)?.[1]?.trim()||"Aplica lo aprendido en situaciones prácticas.";
+    const pind3  = extP.match(/INDICADOR3[:\s]+([\s\S]*?)(?=EVIDENCIA:|$)/i)?.[1]?.trim()||"Demuestra actitudes de respeto y colaboración.";
+    tabla([[gr("OBJETIVO",{fs:8}),nm(obj.substring(0,300),{fs:8})]],[PW*0.14,PW*0.86]);
+    tabla([[gr("RECURSOS",{fs:8}),nm(rec.substring(0,300),{fs:8})]],[PW*0.14,PW*0.86]);
 
     doc.moveDown(0.3);
     tabla([[az("REFERENTES NACIONALES DE CALIDAD",{fs:10})]], [PW]);
     const et=getBloque("EXTRAS");
     const dba=et.match(/DBA[:\s]+([\s\S]*?)(?=EVIDENCIA:|CRITERIO:|RECURSOS:|$)/i)?.[1]?.trim()||"";
-    const comp=et.match(/COMPETENCIA[:\s]+([\s\S]*?)(?=DBA:|EVIDENCIA:|$)/i)?.[1]?.trim()||"";
+    const comp=et.match(/ESTANDAR[:\s]+([\s\S]*?)(?=DBA:|INDICADOR|EVIDENCIA:|$)/i)?.[1]?.trim()||
+               et.match(/COMPETENCIA[:\s]+([\s\S]*?)(?=DBA:|EVIDENCIA:|$)/i)?.[1]?.trim()||"";
     const evid=et.match(/EVIDENCIA[:\s]+([\s\S]*?)(?=CRITERIO:|RECURSOS:|$)/i)?.[1]?.trim()||"";
-    tabla([[gr("ESTÁNDARES",{fs:8}),nm(comp.substring(0,300),{fs:8})],[gr("DBA",{fs:8}),nm(dba.substring(0,300),{fs:8})]],[PW*0.18,PW*0.82]);
-    tabla([[gr("COMP.",{fs:8}),gr("SABER",{align:"center",fs:8}),gr("HACER",{align:"center",fs:8}),gr("SER",{align:"center",fs:8})],[nm("",{fs:8}),nm(getBloque("DESARROLLO").substring(0,180),{fs:8}),nm(getBloque("TALLER").substring(0,180),{fs:8}),nm(getBloque("CIERRE").substring(0,130),{fs:8})]],[PW*0.1,PW*0.3,PW*0.3,PW*0.3]);
+    tabla([[gr("ESTÁNDARES BÁSICOS",{fs:8}),nm(comp.substring(0,300),{fs:8})],[gr("DBA",{fs:8}),nm(dba.substring(0,300),{fs:8})]],[PW*0.22,PW*0.78]);
+    tabla([[gr("INDICADORES DE COMPETENCIA",{fs:8}),gr("SABER",{align:"center",fs:8}),gr("HACER",{align:"center",fs:8}),gr("SER",{align:"center",fs:8})],[nm("Por dimensión",{fs:8}),nm(pind1.substring(0,180),{fs:8}),nm(pind2.substring(0,180),{fs:8}),nm(pind3.substring(0,130),{fs:8})]],[PW*0.14,PW*0.29,PW*0.29,PW*0.28]);
 
     doc.moveDown(0.3);
     tabla([[az("METODOLOGÍA EN SECUENCIA DIDÁCTICA",{fs:10})]], [PW]);
     const secs=[
-      {t:"EXPLORACIÓN (SABERES PREVIOS)",    c:(getBloque("SABERES_PREVIOS")||getBloque("APERTURA")).substring(0,400)},
-      {t:"ESTRUCTURACIÓN (PRÁCTICA)",        c:(getBloque("DESARROLLO")+" "+getBloque("TALLER")).substring(0,500)},
-      {t:"TRANSFERENCIA (VALORACIÓN)",       c:getBloque("RETROALIMENTACION").substring(0,350)},
-      {t:"REFUERZO (INTEGRACIÓN A CONTEXTOS COTIDIANOS)",c:(getBloque("CIERRE")+" "+getBloque("TAREA")).substring(0,350)},
+      {t:"INICIO DE LA CLASE (APERTURA Y MOTIVACIÓN)", c:getBloque("APERTURA").substring(0,450)},
+      {t:"EXPLORACIÓN (SABERES PREVIOS)",    c:getBloque("SABERES_PREVIOS").split("\n").filter(l=>l.trim()).map((l,i)=>(i+1)+". "+l.replace(/^\d+\.\s*/,"")).join("\n").substring(0,450)},
+      {t:"ESTRUCTURACIÓN (PRÁCTICA Y DESARROLLO)", c:(getBloque("DESARROLLO")+" "+getBloque("TALLER")).substring(0,600)},
+      {t:"TRANSFERENCIA (VALORACIÓN)",       c:getBloque("RETROALIMENTACION").substring(0,450)},
+      {t:"REFUERZO (INTEGRACIÓN A CONTEXTOS COTIDIANOS)",c:(getBloque("CIERRE")+" "+getBloque("TAREA")).substring(0,450)},
     ];
     for (const s of secs) tabla([[gr(s.t,{fs:8,align:"left"})],[nm(s.c||".",{fs:8})]],[PW]);
 
     doc.moveDown(0.3);
     tabla([[az("EVALUACIÓN",{fs:10})]], [PW]);
-    tabla([[gr("DESEMPEÑOS ESPERADOS",{align:"center",fs:8}),gr("TIPO DE EVALUACIÓN",{align:"center",fs:8})],[nm(evid.substring(0,250),{fs:8}),nm("Valoración de actividades. Oral y escrita.",{fs:8})]],[PW*0.6,PW*0.4]);
-    tabla([[gr("REFERENCIAS BIBLIOGRÁFICAS",{align:"center",fs:8})],[nm("MEN, DBA, Lineamientos Curriculares, internet, textos escolares.",{fs:8})]],[PW]);
+    tabla([[gr("DESEMPEÑOS ESPERADOS",{align:"center",fs:8}),gr("EVALUACIÓN PERTINENTE",{align:"center",fs:8})],[nm(evid.substring(0,250),{fs:8}),nm((evalP||"Evaluación oral y escrita pertinente al tema.").substring(0,400),{fs:8})]],[PW*0.4,PW*0.6]);
+    tabla([[gr("REFERENCIAS BIBLIOGRÁFICAS Y WEBGRAFÍA",{align:"center",fs:8})],[nm((webg||"MEN, DBA, Lineamientos Curriculares, internet, textos escolares.").substring(0,400),{fs:8})]],[PW]);
 
     // Firmas
     doc.moveDown(0.8);
