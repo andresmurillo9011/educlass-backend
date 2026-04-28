@@ -171,21 +171,96 @@ app.post("/registro-estudiante", async (req,res) => {
   } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
 });
 
-// Login estudiante con cuenta propia
+// Login estudiante con cuenta propia o pre-registrada
 app.post("/login-estudiante-reg", async (req,res) => {
   try {
     const { usuario, password } = req.body;
     const db = leerDB();
     if (!db.estudiantesReg) db.estudiantesReg = [];
-    const est = db.estudiantesReg.find(e=>e.usuario===usuario);
-    if (!est) return res.status(401).json({ mensaje:"Usuario no encontrado" });
-    const ok = await bcrypt.compare(password||"", est.password);
-    if (!ok) return res.status(401).json({ mensaje:"Contraseña incorrecta" });
-    const { password:_, ...pub } = est;
-    // Buscar tareas asignadas
-    const tareas = (db.tareas||[]).filter(t=>(t.estudiantesReg||[]).includes(est.id)||
-      (db.estudiantesTemp||[]).find(et=>et.estudianteRegId===est.id));
+    
+    // Buscar por usuario o documento
+    const est = db.estudiantesReg.find(e=>e.usuario===usuario || e.documento===usuario);
+    if (!est) return res.status(401).json({ mensaje:"Usuario no encontrado. Verifica con tu docente." });
+    
+    let ok = false;
+    if (est.preRegistrado && !est.password) {
+      // Pre-registrado: usar contraseña plana (6 últimos dígitos del documento)
+      ok = (password === est.passwordPlain);
+      if (ok) {
+        // Hash the password for future logins
+        const idx = db.estudiantesReg.findIndex(e=>e.id===est.id);
+        db.estudiantesReg[idx].password = await bcrypt.hash(password, 10);
+        db.estudiantesReg[idx].preRegistrado = false;
+        guardarDB(db);
+      }
+    } else if (est.password) {
+      ok = await bcrypt.compare(password||"", est.password);
+    }
+    
+    if (!ok) return res.status(401).json({ mensaje:"Contraseña incorrecta. Tu contraseña son los últimos 6 dígitos de tu documento." });
+    
+    const { password:_, passwordPlain:__, ...pub } = est;
     res.json({ ok:true, estudiante:pub });
+  } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
+});
+
+// Obtener lista de estudiantes por grado (para docente)
+app.get("/estudiantes-grado/:grado", (req,res) => {
+  try {
+    const db = leerDB();
+    const grado = req.params.grado.replace("°","").padStart(2,"0");
+    const lista = (db.estudiantesReg||[])
+      .filter(e=>e.grado===grado||e.grado===req.params.grado)
+      .map(e=>({ id:e.id, nombre:e.nombre, usuario:e.usuario, documento:e.documento, grado:e.grado, grupo:e.grupo }))
+      .sort((a,b)=>a.nombre.localeCompare(b.nombre));
+    res.json({ estudiantes:lista });
+  } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
+});
+
+// Obtener todos los grados disponibles
+app.get("/grados-disponibles", (req,res) => {
+  try {
+    const db = leerDB();
+    const grados = [...new Set((db.estudiantesReg||[]).map(e=>e.grado))].sort();
+    res.json({ grados });
+  } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
+});
+
+// Guardar nota de estudiante
+app.post("/guardar-nota", (req,res) => {
+  try {
+    const { estudianteId, tareaId, nota, comentario, docenteId } = req.body;
+    const db = leerDB();
+    if (!db.notas) db.notas = [];
+    const idx = db.notas.findIndex(n=>n.estudianteId===estudianteId && n.tareaId===tareaId);
+    const notaObj = { id:idx>=0?db.notas[idx].id:uuidv4(), estudianteId, tareaId, docenteId, nota, comentario:comentario||"", fecha:new Date().toISOString() };
+    if(idx>=0) db.notas[idx]=notaObj; else db.notas.push(notaObj);
+    // Also update entrega
+    const eIdx = db.entregas.findIndex(e=>e.tareaId===tareaId&&(e.estudianteId===estudianteId||e.estudianteRegId===estudianteId));
+    if(eIdx>=0){ db.entregas[eIdx].calificacion=nota; db.entregas[eIdx].comentario=comentario||""; }
+    guardarDB(db);
+    res.json({ ok:true, nota:notaObj });
+  } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
+});
+
+// Libro de notas del docente
+app.get("/libro-notas/:docenteId", (req,res) => {
+  try {
+    const db = leerDB();
+    const tareas = (db.tareas||[]).filter(t=>t.docenteId===req.params.docenteId);
+    const resultado = tareas.map(t=>{
+      const asignados = [...(t.estudiantesAsignados||[]), ...(t.estudiantesReg||[]).map(id=>{
+        const e=(db.estudiantesReg||[]).find(x=>x.id===id);
+        return e?{id:e.id,nombre:e.nombre}:null;
+      }).filter(Boolean)];
+      const entregas = (db.entregas||[]).filter(e=>e.tareaId===t.id);
+      return { tarea:{ id:t.id, titulo:t.titulo, tipo:t.tipo, area:t.area, grado:t.grado, fechaEntrega:t.fechaEntrega },
+               estudiantes: asignados.map(a=>{
+                 const ent = entregas.find(e=>e.estudianteId===a.id||e.estudianteRegId===a.id);
+                 return { id:a.id, nombre:a.nombre, entregada:!!ent, calificacion:ent?.calificacion||null, comentario:ent?.comentario||"", respuestasActividad:ent?.respuestasActividad||null };
+               })};
+    });
+    res.json({ resultado });
   } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
 });
 
@@ -194,16 +269,35 @@ app.get("/mis-tareas-estudiante/:estudianteId", (req,res) => {
   try {
     const db = leerDB();
     const estudianteId = req.params.estudianteId;
-    // Tareas donde el estudiante está en la lista por nombre o id
+    const est = (db.estudiantesReg||[]).find(e=>e.id===estudianteId);
+    const gradoEst = est?.grado||"";
+    
+    const ahora = new Date();
     const tareasAsignadas = (db.tareas||[]).filter(t=>{
-      const enLista = (t.estudiantesAsignados||[]).find(e=>e.estudianteRegId===estudianteId);
-      return enLista || (t.estudiantesReg||[]).includes(estudianteId);
+      // Por id directo
+      if ((t.estudiantesReg||[]).includes(estudianteId)) return true;
+      // Por grado asignado
+      if (t.asignarGrado && t.asignarGrado!=="manual") {
+        const gT = t.asignarGrado.replace("°","").padStart(2,"0");
+        const gE = gradoEst.replace("°","").padStart(2,"0");
+        if (gT===gE || t.asignarGrado===gradoEst || t.grado===gradoEst || t.grado===gE) return true;
+      }
+      return false;
     }).map(t=>{
-      const entrega = (db.entregas||[]).find(e=>e.tareaId===t.id && e.estudianteRegId===estudianteId);
+      const entrega = (db.entregas||[]).find(e=>e.tareaId===t.id && (e.estudianteRegId===estudianteId||e.estudianteId===estudianteId));
+      // Check if deadline passed
+      let vencida = false;
+      if (t.fechaEntrega) {
+        const deadline = new Date(t.fechaEntrega + "T23:59:59");
+        vencida = ahora > deadline && !entrega;
+      }
       return { id:t.id, titulo:t.titulo, descripcion:t.descripcion, tipo:t.tipo, area:t.area, grado:t.grado,
                fechaEntrega:t.fechaEntrega, codigo:t.codigo, estado:t.estado,
-               entregada:!!entrega, calificacion:entrega?.calificacion||null,
-               comentario:entrega?.comentario||"", actividad:t.actividad };
+               entregada:!!entrega, vencida,
+               calificacion:entrega?.calificacion||null,
+               comentario:entrega?.comentario||"",
+               actividad:t.actividad,
+               autoCalificada:entrega?.autoCalificada||false };
     });
     res.json({ tareas:tareasAsignadas });
   } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
@@ -212,7 +306,7 @@ app.get("/mis-tareas-estudiante/:estudianteId", (req,res) => {
 // Crear tarea con tipo de actividad
 app.post("/crear-tarea", (req,res) => {
   try {
-    const { docenteId, titulo, descripcion, tipo, actividad, area, grado, fechaEntrega, estudiantesLista } = req.body;
+    const { docenteId, titulo, descripcion, tipo, actividad, area, grado, fechaEntrega, estudiantesLista, asignarGrado, estudiantesRegIds } = req.body;
     const db = leerDB();
     if (!db.estudiantesReg) db.estudiantesReg = [];
 
@@ -228,19 +322,31 @@ app.post("/crear-tarea", (req,res) => {
       return { id:est.id, nombre, usuario:user, password:pass };
     });
 
+    // Asignar estudiantes registrados por grado
+    const estudiantesRegAsignados = [];
+    if (asignarGrado && asignarGrado !== "manual") {
+      const gradoNum = asignarGrado.replace("°","").padStart(2,"0");
+      const estGrado = (db.estudiantesReg||[]).filter(e=>e.grado===gradoNum||e.grado===asignarGrado);
+      estGrado.forEach(e=>estudiantesRegAsignados.push(e.id));
+    }
+    if (estudiantesRegIds && Array.isArray(estudiantesRegIds)) {
+      estudiantesRegIds.forEach(id=>{ if(!estudiantesRegAsignados.includes(id)) estudiantesRegAsignados.push(id); });
+    }
+
     const tarea = {
       id:          tareaId,
       docenteId,
       titulo,
       descripcion,
-      tipo:        tipo||"taller",      // taller, evaluacion, quiz, completar, seleccion, relacion
-      actividad:   actividad||null,     // preguntas estructuradas
+      tipo:        tipo||"taller",
+      actividad:   actividad||null,
       area,
       grado,
+      asignarGrado: asignarGrado||"manual",
       fechaEntrega: fechaEntrega||"",
       codigo,
       estudiantesAsignados: estudiantesTemp.map(e=>({id:e.id,nombre:e.nombre,usuario:e.usuario})),
-      estudiantesReg: [],               // IDs de estudiantes registrados asignados
+      estudiantesReg: estudiantesRegAsignados,
       creadaEn:    new Date().toISOString(),
       estado:      "activa"
     };
@@ -337,10 +443,47 @@ app.post("/entregar-tarea", uploadEntrega.single("archivo"), async (req,res) => 
       estado:           "entregado"
     };
 
+    // Auto-grade quiz, completar, verdadero_falso
+    const tarea = (db.tareas||[]).find(t=>t.id===tareaId);
+    let autoCalificada = false;
+    let notaAuto = null;
+    let resultadoDetalle = null;
+    
+    if (tarea && entrega.respuestasActividad && tarea.actividad?.preguntas) {
+      const preguntas = tarea.actividad.preguntas;
+      const respuestas = entrega.respuestasActividad;
+      let correctas = 0, total = 0;
+      const detalle = [];
+      
+      if (["quiz","completar","verdadero_falso"].includes(tarea.tipo)) {
+        preguntas.forEach((p,i) => {
+          const respEst = (respuestas[i]||"").toString().trim().toLowerCase();
+          const respCorr = (p.correcta||p.respuesta||"").toString().trim().toLowerCase();
+          const esCorrecta = respEst === respCorr || (tarea.tipo==="completar" && respEst.includes(respCorr));
+          if (respCorr) {
+            total++;
+            if (esCorrecta) correctas++;
+            detalle.push({ pregunta:p.pregunta||p.enunciado||p.afirmacion, respEst:respuestas[i]||"", respCorrecta:p.correcta||p.respuesta, esCorrecta });
+          }
+        });
+        if (total > 0) {
+          const pct = (correctas/total)*100;
+          // Scale to 0-5 (Colombian grading)
+          notaAuto = (correctas/total * 5).toFixed(1);
+          autoCalificada = true;
+          resultadoDetalle = { correctas, total, porcentaje:Math.round(pct), nota:notaAuto, detalle };
+          entrega.calificacion = notaAuto;
+          entrega.comentario = `Calificación automática: ${correctas}/${total} respuestas correctas (${Math.round(pct)}%)`;
+          entrega.autoCalificada = true;
+          entrega.resultadoDetalle = resultadoDetalle;
+        }
+      }
+    }
+    
     if (idx>=0) db.entregas[idx] = entrega;
     else db.entregas.push(entrega);
     guardarDB(db);
-    res.json({ ok:true, entrega, mensaje:"Tarea entregada ✅" });
+    res.json({ ok:true, entrega, mensaje:"Tarea entregada ✅", autoCalificada, notaAuto, resultadoDetalle });
   } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
 });
 
