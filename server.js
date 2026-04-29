@@ -1,6 +1,6 @@
 // ======================================================
 //  EduClass Premium — server.js v5
-//  ⚠️  PON TU API KEY:  const GROQ_API_KEY = "..."
+//  ⚠️  PON TU API KEY:  const GROQ_API_KEY = "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"
 // ======================================================
 const express  = require("express");
 const cors     = require("cors");
@@ -55,7 +55,7 @@ const storageEnt = multer.diskStorage({
 const uploadEnt = multer({ storage:storageEnt, limits:{ fileSize:20*1024*1024 } });
 
 // ── Groq ──────────────────────────────────────────────
-const GROQ_API_KEY = "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";
+const GROQ_API_KEY = "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";
 const Groq = require("groq-sdk");
 const groq = new Groq({ apiKey: GROQ_API_KEY });
 
