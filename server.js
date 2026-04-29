@@ -5,7 +5,7 @@
 //  C:\Users\JAIR_MURILLO\Desktop\plataforma-clases\backend\server.js
 //
 //  ⚠️  BUSCA ESTA LÍNEA Y PON TU API KEY:
-//      const GROQ_API_KEY = "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"";
+//      const GROQ_API_KEY = "PEGA_TU_API_KEY_AQUI";
 // ======================================================
 const express  = require("express");
 const cors     = require("cors");
