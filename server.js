@@ -697,31 +697,56 @@ DATOS:
 - Nivel: ${nivelEducativo||nivel}
 
 NIVEL EDUCATIVO SELECCIONADO: ${nivelEducativo||nivel} — USA ESTE NIVEL EN TODO EL DOCUMENTO
-ESTRATEGIAS: Apertura: ${tipoApertura} | Desarrollo: ${estratDesarrollo} | Retro: ${retroalimentacion} | Cierre: ${tipoCierre} | Tarea: ${dejaTarea?estratTarea:"Sin tarea"}
+ESTRATEGIAS ELEGIDAS: Apertura: ${tipoApertura} | Desarrollo: ${estratDesarrollo} | Retro: ${retroalimentacion} | Cierre: ${tipoCierre} | Tarea: ${dejaTarea?estratTarea:"Sin tarea"}
+
+BANCO DE ESTRATEGIAS DISPONIBLES (úsalas en el contenido):
+Saberes previos: Preguntas exploratorias, Discusión guiada, SQA, Lluvia de ideas, Actividad focal introductoria, Preguntas guía, Preguntas literales.
+Comprensión: Cuadro comparativo, Resumen, Parafraseo, Diagrama de árbol, Matriz de inducción, Analogía, Esquema, Cuadro sinóptico, Ishikawa, Síntesis, Diagrama de flujo, Mapa mental, Mapa conceptual.
+Grupales: Panel, Foro, Entrevista, Debate, Simposio, Taller, Juego de roles, Seminario, Mesa redonda, Coloquio.
+Aprendizaje activo: Aprendizaje cooperativo, Simulación, Estudio de caso, ABP, ABPR, Aula invertida, Contrato de aprendizaje.
 
 ===APERTURA===
 TIPO: ${tipoApertura}
 Redacta el contenido completo de la apertura contextualizado en Colombia para nivel ${nivelEducativo||nivel}, grado ${grado}°. Mínimo 8 líneas. NO uses corchetes. Escribe el texto directamente.
 
 ===SABERES_PREVIOS===
-Escribe EXACTAMENTE 4 preguntas diagnósticas sobre "${tema}", una por línea, en este formato:
-1. (pregunta uno)
-2. (pregunta dos)
-3. (pregunta tres)
-4. (pregunta cuatro)
+Escribe EXACTAMENTE 4 preguntas diagnósticas sobre "${tema}" para nivel ${nivelEducativo||nivel}, grado ${grado}°.
+Para CADA pregunta usa este formato EXACTO (cada pregunta+respuesta en líneas separadas):
+1. [pregunta diagnóstica]
+   Respuesta esperada: [respuesta breve de lo que el estudiante debería responder]
+2. [pregunta diagnóstica]
+   Respuesta esperada: [respuesta breve]
+3. [pregunta diagnóstica]
+   Respuesta esperada: [respuesta breve]
+4. [pregunta diagnóstica]
+   Respuesta esperada: [respuesta breve]
 
 ===DESARROLLO===
 ESTRATEGIA: ${estratDesarrollo}
-Redacta el contenido temático MUY COMPLETO sobre "${tema}" para nivel ${nivelEducativo||nivel}, grado ${grado}°. Incluye:
-- Mínimo 5 subtemas con título ## cada uno
-- Ejemplos reales de Colombia
-- Datos verificables con fuente entre paréntesis
-- Una pregunta reflexiva al final de cada subtema
-NO uses corchetes. Escribe el contenido directamente.
+Redacta el contenido temático EXTENSO Y COMPLETO sobre "${tema}" para nivel ${nivelEducativo||nivel}, grado ${grado}°.
+REQUISITOS OBLIGATORIOS:
+- Mínimo 6 subtemas, cada uno con título ## en mayúsculas
+- Cada subtema desarrollado en mínimo 4-6 líneas de contenido pedagógico
+- Incluir definiciones precisas, conceptos clave en **negrita**
+- Ejemplos concretos y reales del contexto colombiano y latinoamericano
+- Datos, cifras o hechos verificables con su fuente entre paréntesis: (Fuente: Nombre, año)
+- Al final de cada subtema: una actividad o pregunta reflexiva marcada como → REFLEXIONA:
+- Conectar el contenido con la estrategia pedagógica: ${estratDesarrollo}
+- Vocabulario apropiado para ${nivelEducativo||nivel}, grado ${grado}°
+- Mínimo 600 palabras en total para esta sección
+NO uses corchetes. Escribe el contenido directamente como texto pedagógico.
 
 ===RETROALIMENTACION===
 ESTRATEGIA: ${retroalimentacion}
-Redacta la actividad completa de retroalimentación sobre "${tema}" para nivel ${nivelEducativo||nivel}. Escribe el contenido directamente, NO uses corchetes.
+Redacta una actividad COMPLETA Y DETALLADA de retroalimentación sobre "${tema}" aplicando la estrategia ${retroalimentacion}.
+La actividad debe:
+- Tener un título claro
+- Incluir objetivo de la actividad
+- Tener instrucciones paso a paso (mínimo 4 pasos)
+- Incluir material o recursos necesarios
+- Duración estimada
+- Criterios de verificación del aprendizaje
+Mínimo 200 palabras. Escribe directamente sin corchetes.
 
 ===TALLER===
 Escribe el taller con EXACTAMENTE estas 5 secciones numeradas, cada una en su propia línea:
@@ -733,7 +758,12 @@ Escribe el taller con EXACTAMENTE estas 5 secciones numeradas, cada una en su pr
 
 ===CIERRE===
 ESTRATEGIA: ${tipoCierre}
-Redacta el cierre con 3 pasos: síntesis del tema, metacognición (¿qué aprendí?, ¿cómo?) y conexión con la vida cotidiana. Escribe directamente sin corchetes.
+Redacta un cierre COMPLETO aplicando la estrategia ${tipoCierre}. Incluye:
+PASO 1 - SÍNTESIS: Resume los conceptos más importantes de "${tema}" en forma de texto, lista o mapa (según la estrategia)
+PASO 2 - METACOGNICIÓN: 3 preguntas de reflexión personal: ¿Qué aprendí hoy? ¿Cómo lo aprendí? ¿Para qué me sirve?
+PASO 3 - CONEXIÓN COTIDIANA: Explica cómo aplica "${tema}" en la vida diaria del estudiante en Colombia
+PASO 4 - COMPROMISOS: 2 compromisos concretos que el estudiante puede tomar
+Mínimo 200 palabras. Escribe directamente sin corchetes.
 
 ===TAREA===
 ${dejaTarea?`ESTRATEGIA: ${estratTarea}\n[Tarea con instrucciones claras]`:"Sin tarea."}
@@ -758,7 +788,7 @@ WEBGRAFIA: Escribe 3 fuentes reales consultadas para esta guía en formato APA: 
 Redacta en español impecable. Todo contextualizado en Colombia. Nunca seas genérico.`;
 
     const resp = await groq.chat.completions.create({
-      model:"llama-3.3-70b-versatile", max_tokens:4096, temperature:0.7,
+      model:"llama-3.3-70b-versatile", max_tokens:8192, temperature:0.7,
       messages:[
         { role:"system", content:"Eres el mejor pedagogo de Colombia. Guías de altísima calidad. NUNCA genérico. Respeta ===SECCION===." },
         { role:"user", content:prompt }
