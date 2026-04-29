@@ -511,11 +511,13 @@ app.post("/entregar-tarea", uploadEntrega.single("archivo"), async (req,res) => 
       let correctas = 0, total = 0;
       const detalle = [];
       
-      if (["quiz","completar","verdadero_falso"].includes(tarea.tipo)) {
+      if (["quiz","completar","verdadero_falso","evaluacion"].includes(tarea.tipo)) {
         preguntas.forEach((p,i) => {
           const respEst = (respuestas[i]||"").toString().trim().toLowerCase();
           const respCorr = (p.correcta||p.respuesta||"").toString().trim().toLowerCase();
-          const esCorrecta = respEst === respCorr || (tarea.tipo==="completar" && respEst.includes(respCorr));
+          const esCorrecta = respEst === respCorr || 
+            (["completar","evaluacion"].includes(tarea.tipo) && respCorr && respEst.includes(respCorr)) ||
+            (["completar","evaluacion"].includes(tarea.tipo) && respCorr && respCorr.includes(respEst) && respEst.length>2);
           if (respCorr) {
             total++;
             if (esCorrecta) correctas++;
