@@ -55,7 +55,7 @@ const storageEnt = multer.diskStorage({
 const uploadEnt = multer({ storage:storageEnt, limits:{ fileSize:20*1024*1024 } });
 
 // ── Groq ──────────────────────────────────────────────
-const GROQ_API_KEY = "PEGA_TU_API_KEY_AQUI";
+const GROQ_API_KEY = "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";
 const Groq = require("groq-sdk");
 const groq = new Groq({ apiKey: GROQ_API_KEY });
 
