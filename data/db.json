@@ -11,19 +11,6 @@
       "municipio": "",
       "logoPath": "",
       "creadoEn": "2026-04-27T17:18:12.649Z"
-    },
-    {
-      "id": "7cce4e2d-6b89-43b6-99b1-06f018012785",
-      "nombre": "ddddd",
-      "email": "carmen",
-      "password": "$2b$10$90BZ4LCN.Oa9fwg5//REweHOx2mV4KuJm4J17PGXgFpnFs7sgnhie",
-      "institucion": "",
-      "cargo": "Docente",
-      "ciudad": "",
-      "municipio": "",
-      "logoPath": "",
-      "banderaPath": "",
-      "creadoEn": "2026-04-29T19:04:14.973Z"
     }
   ],
   "clases": [],
@@ -171,16 +158,16 @@
     {
       "id": "ece5464f-6583-437f-a539-df9e085fe6ea",
       "nombre": "ARBOLEDA PEREZ PAULA",
-      "usuario": "1118072411",
-      "passwordPlain": null,
-      "password": "$2b$10$WPzn30CGHM0TPhzBmHBXoOWoAzp7dHbP.aBt3XjXzLzYbXhNwGnuq",
+      "usuario": "arbopau411",
+      "passwordPlain": "072411",
+      "password": null,
       "documento": "1118072411",
       "grado": "10",
       "grupo": "1001",
       "genero": "FEMENINO",
       "institucion": "I.E.R. SANTIAGO DE LA SELVA",
       "creadoEn": "2026-01-01T00:00:00.000Z",
-      "preRegistrado": false
+      "preRegistrado": true
     },
     {
       "id": "04e1b85a-02af-4e18-bb80-226bf3ec0b20",
@@ -981,47 +968,8 @@
       "preRegistrado": true
     }
   ],
-  "tareas": [
-    {
-      "id": "0051772f-4514-453b-a11f-04122def595f",
-      "docenteId": "7cce4e2d-6b89-43b6-99b1-06f018012785",
-      "titulo": "la tecnologia",
-      "descripcion": "",
-      "tipo": "evaluacion",
-      "actividad": null,
-      "area": "Tecnología",
-      "grado": "9",
-      "fechaEntrega": "2026-04-30",
-      "codigo": "X6Y7QB",
-      "estudiantesAsignados": [],
-      "estudiantesReg": [
-        "9497ec4e-846d-448d-ae25-4e46f9560c01",
-        "ec4305cd-46f2-4655-a805-b254bbe0097b",
-        "a157fa85-cea0-4502-948c-66727abd28db",
-        "2559a1d1-f87c-40b0-97d1-dc8e1c04555e",
-        "66eea76e-4ffc-4c1b-a128-d00a4cc5da5a",
-        "ece5464f-6583-437f-a539-df9e085fe6ea"
-      ],
-      "creadaEn": "2026-04-29T19:05:10.232Z",
-      "estado": "activa"
-    }
-  ],
+  "tareas": [],
   "estudiantes": [],
-  "entregas": [
-    {
-      "id": "84f37704-7605-4963-bdf4-1230ab96b869",
-      "tareaId": "0051772f-4514-453b-a11f-04122def595f",
-      "estudianteId": null,
-      "estudianteRegId": "ece5464f-6583-437f-a539-df9e085fe6ea",
-      "nombreEstudiante": "ARBOLEDA PEREZ PAULA",
-      "respuesta": "",
-      "respuestasActividad": {},
-      "archivoPath": "uploads/entregas/entrega_980931ef-903a-45d6-a8f6-2ab881751363.png",
-      "archivoNombre": "5c0c388e-e38e-41c3-8d67-35ba22c0a642.png",
-      "entregadoEn": "2026-04-29T19:07:29.940Z",
-      "calificacion": null,
-      "comentario": "",
-      "estado": "entregado"
-    }
-  ]
+  "entregas": [],
+  "notas": []
 }

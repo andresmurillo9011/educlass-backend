@@ -17,29 +17,25 @@ app.use(express.json({ limit: "50mb" }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // ── Directorios ───────────────────────────────────────
-// ── DB Path — usa /tmp en Railway para persistencia entre reinicios ──
-const IS_RAILWAY = !!process.env.RAILWAY_ENVIRONMENT || !!process.env.RAILWAY_PROJECT_ID;
-const DB_DIR     = IS_RAILWAY ? "/tmp/educlass_data" : path.join(__dirname, "data");
-const DB_PATH    = path.join(DB_DIR, "db.json");
-const DB_SEED    = path.join(__dirname, "data", "db.json"); // archivo semilla con estudiantes
+// ── DB — Sistema híbrido: archivo local + memoria para Railway ──────
+const DB_PATH  = path.join(__dirname, "data", "db.json");
+const UPLOAD_DIR   = path.join(__dirname, "uploads");
+const ENTREGAS_DIR = path.join(__dirname, "uploads", "entregas");
+[path.join(__dirname,"data"), UPLOAD_DIR, ENTREGAS_DIR].forEach(d => {
+  if(!fs.existsSync(d)) fs.mkdirSync(d,{recursive:true});
+});
 
-const UPLOAD_DIR   = IS_RAILWAY ? "/tmp/educlass_uploads"          : path.join(__dirname, "uploads");
-const ENTREGAS_DIR = IS_RAILWAY ? "/tmp/educlass_uploads/entregas"  : path.join(__dirname, "uploads", "entregas");
-[DB_DIR, UPLOAD_DIR, ENTREGAS_DIR].forEach(d => { if(!fs.existsSync(d)) fs.mkdirSync(d,{recursive:true}); });
+// Cache en memoria — sobrevive reinicios del proceso pero NO redeploys
+// Para Railway usamos el db.json del repo como semilla + guardamos en memoria
+let _dbCache = null;
 
-// ── DB helpers ────────────────────────────────────────
 const leerDB = () => {
-  // Si no existe la DB en /tmp, copiar la semilla con estudiantes
+  if (_dbCache) return JSON.parse(JSON.stringify(_dbCache)); // copia del cache
   if (!fs.existsSync(DB_PATH)) {
-    if (fs.existsSync(DB_SEED)) {
-      fs.copyFileSync(DB_SEED, DB_PATH);
-      console.log("📦 DB inicializada desde semilla");
-    } else {
-      fs.writeFileSync(DB_PATH, JSON.stringify({
-        usuarios:[], clases:[], tareas:[], estudiantes:[],
-        entregas:[], estudiantesReg:[], notas:[]
-      }));
-    }
+    fs.writeFileSync(DB_PATH, JSON.stringify({
+      usuarios:[], clases:[], tareas:[], estudiantes:[],
+      entregas:[], estudiantesReg:[], notas:[]
+    }));
   }
   const db = JSON.parse(fs.readFileSync(DB_PATH,"utf8"));
   if (!db.tareas)         db.tareas         = [];
@@ -47,9 +43,14 @@ const leerDB = () => {
   if (!db.entregas)       db.entregas       = [];
   if (!db.estudiantesReg) db.estudiantesReg = [];
   if (!db.notas)          db.notas          = [];
+  _dbCache = JSON.parse(JSON.stringify(db));
   return db;
 };
-const guardarDB = (db) => fs.writeFileSync(DB_PATH, JSON.stringify(db,null,2));
+
+const guardarDB = (db) => {
+  _dbCache = JSON.parse(JSON.stringify(db)); // actualiza cache
+  try { fs.writeFileSync(DB_PATH, JSON.stringify(db,null,2)); } catch(_) {}
+};
 
 // ── Multer ────────────────────────────────────────────
 const storage = multer.diskStorage({
@@ -66,9 +67,42 @@ const storageEntrega = multer.diskStorage({
 const uploadEntrega = multer({ storage:storageEntrega, limits:{ fileSize:20*1024*1024 } });
 
 // ── Groq ──────────────────────────────────────────────
-const GROQ_API_KEY = "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";
 const Groq = require("groq-sdk");
-const groq = new Groq({ apiKey: GROQ_API_KEY });
+
+// ── Pool de API Keys — rota automáticamente cuando una se agota ──
+const GROQ_KEYS = [
+  process.env.GROQ_API_KEY_1 || process.env.GROQ_API_KEY || "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",
+  process.env.GROQ_API_KEY_2 || "",
+  process.env.GROQ_API_KEY_3 || "",
+  process.env.GROQ_API_KEY_4 || "",
+].filter(k => k && k.startsWith("gsk_"));
+
+let groqKeyIndex = 0;
+const getGroq = () => new Groq({ apiKey: GROQ_KEYS[groqKeyIndex % GROQ_KEYS.length] });
+
+const groqCompletion = async (params) => {
+  let intentos = 0;
+  while (intentos < GROQ_KEYS.length) {
+    try {
+      const groq = getGroq();
+      const resp = await groqCompletion(params);
+      return resp;
+    } catch(e) {
+      const msg = e.message || "";
+      // Si es rate limit, cambia a la siguiente key
+      if (msg.includes("rate_limit") || msg.includes("429") || msg.includes("Rate limit")) {
+        groqKeyIndex++;
+        intentos++;
+        console.log('⚠️ Rate limit key '+(groqKeyIndex-1)+', cambiando a key '+(groqKeyIndex % GROQ_KEYS.length)+'...');
+        if (intentos >= GROQ_KEYS.length) throw new Error("Todas las API keys agotadas. Intenta más tarde.");
+      } else {
+        throw e;
+      }
+    }
+  }
+};
+
+console.log('🔑 '+GROQ_KEYS.length+' API key(s) de Groq cargadas');
 
 // ======================================================
 //  AUTH DOCENTES
@@ -665,7 +699,7 @@ app.post("/generar-actividad", async (req,res) => {
     };
 
     const prompt = prompts[tipo] || prompts.taller;
-    const resp = await groq.chat.completions.create({
+    const resp = await groqCompletion({
       model:"llama-3.3-70b-versatile", max_tokens:2000, temperature:0.5,
       messages:[
         { role:"system", content:"Eres un experto en evaluación educativa colombiana. Responde SOLO con JSON válido, sin markdown, sin texto adicional." },
@@ -800,7 +834,7 @@ WEBGRAFIA: Escribe 3 fuentes reales consultadas para esta guía en formato APA: 
 
 Redacta en español impecable. Todo contextualizado en Colombia. Nunca seas genérico.`;
 
-    const resp = await groq.chat.completions.create({
+    const resp = await groqCompletion({
       model:"llama-3.3-70b-versatile", max_tokens:8192, temperature:0.7,
       messages:[
         { role:"system", content:"Eres el mejor pedagogo de Colombia. Guías de altísima calidad. NUNCA genérico. Respeta ===SECCION===." },
