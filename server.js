@@ -362,7 +362,7 @@ app.get("/mis-tareas-estudiante/:estudianteId", (req,res) => {
 // Crear tarea con tipo de actividad
 app.post("/crear-tarea", (req,res) => {
   try {
-    const { docenteId, titulo, descripcion, tipo, actividad, area, grado, fechaEntrega, estudiantesLista, asignarGrado, estudiantesRegIds } = req.body;
+    const { docenteId, titulo, descripcion, tipo, actividad, area, grado, fechaEntrega, estudiantesLista, estudiantesRegIds } = req.body;
     const db = leerDB();
     if (!db.estudiantesReg) db.estudiantesReg = [];
 
@@ -378,13 +378,8 @@ app.post("/crear-tarea", (req,res) => {
       return { id:est.id, nombre, usuario:user, password:pass };
     });
 
-    // Asignar estudiantes registrados por grado
+    // Asignar estudiantes registrados por IDs seleccionados
     const estudiantesRegAsignados = [];
-    if (asignarGrado && asignarGrado !== "manual") {
-      const gradoNum = asignarGrado.replace("°","").padStart(2,"0");
-      const estGrado = (db.estudiantesReg||[]).filter(e=>e.grado===gradoNum||e.grado===asignarGrado);
-      estGrado.forEach(e=>estudiantesRegAsignados.push(e.id));
-    }
     if (estudiantesRegIds && Array.isArray(estudiantesRegIds)) {
       estudiantesRegIds.forEach(id=>{ if(!estudiantesRegAsignados.includes(id)) estudiantesRegAsignados.push(id); });
     }
@@ -398,7 +393,7 @@ app.post("/crear-tarea", (req,res) => {
       actividad:   actividad||null,
       area,
       grado,
-      asignarGrado: asignarGrado||"manual",
+
       fechaEntrega: fechaEntrega||"",
       codigo,
       estudiantesAsignados: estudiantesTemp.map(e=>({id:e.id,nombre:e.nombre,usuario:e.usuario})),
