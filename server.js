@@ -819,14 +819,26 @@ app.post("/exportar-word", async (req,res) => {
     const bloques = {};
     let secActual = null;
     for (const linea of contenido.split("\n")) {
-      const m = linea.match(/^===(\w+)===/);
-      if (m) { secActual=m[1]; bloques[secActual]=[]; continue; }
+      // Match ===SECCION=== or === SECCION === or ##SECCION## 
+      const m = linea.match(/^===\s*(\w+)\s*===/) || linea.match(/^##\s*(\w+)\s*##/);
+      if (m) { secActual=m[1].toUpperCase(); bloques[secActual]=[]; continue; }
+      // Also match lines like "APERTURA:" or "DESARROLLO:" at start
+      const m2 = linea.match(/^(APERTURA|SABERES_PREVIOS|SABERES|DESARROLLO|RETROALIMENTACION|TALLER|CIERRE|TAREA|EXTRAS)\s*:/i);
+      if (m2) { secActual=m2[1].toUpperCase(); bloques[secActual]=[]; continue; }
       if (secActual) bloques[secActual].push(linea);
     }
+    // Aliases
+    if (!bloques["SABERES_PREVIOS"] && bloques["SABERES"]) bloques["SABERES_PREVIOS"] = bloques["SABERES"];
+    
     const getBloque = (k) => {
-      const lines = (bloques[k]||[]);
+      const lines = (bloques[k]||bloques[k.toUpperCase()]||[]);
       if(!lines.length) return "";
-      return lines.join("\n").replace(/\*\*/g,"").replace(/^[\s\n]+|[\s\n]+$/g,"");
+      return lines
+        .filter(l => !l.match(/^===.*===/) && !l.match(/^TIPO:/i) && !l.match(/^ESTRATEGIA:/i))
+        .join("\n")
+        .replace(/\*\*/g,"")
+        .replace(/^[\s\n]+|[\s\n]+$/g,"")
+        .trim();
     };
 
     const durMin   = parseInt(duracion)||55;
@@ -989,8 +1001,8 @@ app.post("/exportar-word", async (req,res) => {
     }));
 
     const secciones=[
-      {t:"INICIO DE LA CLASE (APERTURA Y MOTIVACIÓN)", c:getBloque("APERTURA").substring(0,800)},
-      {t:"EXPLORACIÓN (SABERES PREVIOS)",    c:getBloque("SABERES_PREVIOS").split("\n").filter(l=>l.trim()).map((l,i)=>(i+1)+". "+l.replace(/^\d+\.\s*/,"")).join("\n").substring(0,800)},
+      {t:"INICIO DE LA CLASE (APERTURA Y MOTIVACIÓN)", c:getBloque("APERTURA").substring(0,1500)},
+      {t:"EXPLORACIÓN (SABERES PREVIOS)",    c:getBloque("SABERES_PREVIOS").split("\n").filter(l=>l.trim()).map((l,i)=>(i+1)+". "+l.replace(/^\d+\.\s*/,"")).join("\n").substring(0,1500)},
       {t:"ESTRUCTURACIÓN (PRÁCTICA Y DESARROLLO)", c:(getBloque("DESARROLLO")+" "+getBloque("TALLER")).substring(0,1200)},
       {t:"TRANSFERENCIA (VALORACIÓN)",       c:getBloque("RETROALIMENTACION").substring(0,1000)},
       {t:"REFUERZO (INTEGRACIÓN A CONTEXTOS COTIDIANOS)", c:(getBloque("CIERRE")+"\n"+getBloque("TAREA")).substring(0,1000)},
@@ -1068,14 +1080,26 @@ app.post("/exportar-pdf", async (req,res) => {
     const bloques = {};
     let secActual = null;
     for (const linea of contenido.split("\n")) {
-      const m = linea.match(/^===(\w+)===/);
-      if (m) { secActual=m[1]; bloques[secActual]=[]; continue; }
+      // Match ===SECCION=== or === SECCION === or ##SECCION## 
+      const m = linea.match(/^===\s*(\w+)\s*===/) || linea.match(/^##\s*(\w+)\s*##/);
+      if (m) { secActual=m[1].toUpperCase(); bloques[secActual]=[]; continue; }
+      // Also match lines like "APERTURA:" or "DESARROLLO:" at start
+      const m2 = linea.match(/^(APERTURA|SABERES_PREVIOS|SABERES|DESARROLLO|RETROALIMENTACION|TALLER|CIERRE|TAREA|EXTRAS)\s*:/i);
+      if (m2) { secActual=m2[1].toUpperCase(); bloques[secActual]=[]; continue; }
       if (secActual) bloques[secActual].push(linea);
     }
+    // Aliases
+    if (!bloques["SABERES_PREVIOS"] && bloques["SABERES"]) bloques["SABERES_PREVIOS"] = bloques["SABERES"];
+    
     const getBloque = (k) => {
-      const lines = (bloques[k]||[]);
+      const lines = (bloques[k]||bloques[k.toUpperCase()]||[]);
       if(!lines.length) return "";
-      return lines.join("\n").replace(/\*\*/g,"").replace(/^[\s\n]+|[\s\n]+$/g,"");
+      return lines
+        .filter(l => !l.match(/^===.*===/) && !l.match(/^TIPO:/i) && !l.match(/^ESTRATEGIA:/i))
+        .join("\n")
+        .replace(/\*\*/g,"")
+        .replace(/^[\s\n]+|[\s\n]+$/g,"")
+        .trim();
     };
 
     const AZUL="#1B4F8A", AZUL_CL="#D6E4F7", NEGRO="#000000", GRIS="#F2F2F2", BLANCO="#FFFFFF", GRIS_B="#CCCCCC";
@@ -1181,8 +1205,8 @@ app.post("/exportar-pdf", async (req,res) => {
     doc.moveDown(0.3);
     tabla([[az("METODOLOGÍA EN SECUENCIA DIDÁCTICA",{fs:10})]], [PW]);
     const secs=[
-      {t:"INICIO DE LA CLASE (APERTURA Y MOTIVACIÓN)", c:getBloque("APERTURA").substring(0,800)},
-      {t:"EXPLORACIÓN (SABERES PREVIOS)",    c:getBloque("SABERES_PREVIOS").split("\n").filter(l=>l.trim()).map((l,i)=>(i+1)+". "+l.replace(/^\d+\.\s*/,"")).join("\n").substring(0,450)},
+      {t:"INICIO DE LA CLASE (APERTURA Y MOTIVACIÓN)", c:getBloque("APERTURA").substring(0,1500)},
+      {t:"EXPLORACIÓN (SABERES PREVIOS)",    c:getBloque("SABERES_PREVIOS").split("\n").filter(l=>l.trim()).map((l,i)=>(i+1)+". "+l.replace(/^\d+\.\s*/,"")).join("\n").substring(0,1500)},
       {t:"ESTRUCTURACIÓN (PRÁCTICA Y DESARROLLO)", c:(getBloque("DESARROLLO")+" "+getBloque("TALLER")).substring(0,1200)},
       {t:"TRANSFERENCIA (VALORACIÓN)",       c:getBloque("RETROALIMENTACION").substring(0,1000)},
       {t:"REFUERZO (INTEGRACIÓN A CONTEXTOS COTIDIANOS)",c:(getBloque("CIERRE")+"\n"+getBloque("TAREA")).substring(0,1000)},
