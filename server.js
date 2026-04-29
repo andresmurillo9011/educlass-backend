@@ -17,20 +17,36 @@ app.use(express.json({ limit: "50mb" }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // ── Directorios ───────────────────────────────────────
-const DB_PATH        = path.join(__dirname, "data", "db.json");
-const UPLOAD_DIR     = path.join(__dirname, "uploads");
-const ENTREGAS_DIR   = path.join(__dirname, "uploads", "entregas");
-[path.join(__dirname,"data"), UPLOAD_DIR, ENTREGAS_DIR].forEach(d => { if(!fs.existsSync(d)) fs.mkdirSync(d,{recursive:true}); });
+// ── DB Path — usa /tmp en Railway para persistencia entre reinicios ──
+const IS_RAILWAY = !!process.env.RAILWAY_ENVIRONMENT || !!process.env.RAILWAY_PROJECT_ID;
+const DB_DIR     = IS_RAILWAY ? "/tmp/educlass_data" : path.join(__dirname, "data");
+const DB_PATH    = path.join(DB_DIR, "db.json");
+const DB_SEED    = path.join(__dirname, "data", "db.json"); // archivo semilla con estudiantes
+
+const UPLOAD_DIR   = IS_RAILWAY ? "/tmp/educlass_uploads"          : path.join(__dirname, "uploads");
+const ENTREGAS_DIR = IS_RAILWAY ? "/tmp/educlass_uploads/entregas"  : path.join(__dirname, "uploads", "entregas");
+[DB_DIR, UPLOAD_DIR, ENTREGAS_DIR].forEach(d => { if(!fs.existsSync(d)) fs.mkdirSync(d,{recursive:true}); });
 
 // ── DB helpers ────────────────────────────────────────
 const leerDB = () => {
+  // Si no existe la DB en /tmp, copiar la semilla con estudiantes
   if (!fs.existsSync(DB_PATH)) {
-    fs.writeFileSync(DB_PATH, JSON.stringify({ usuarios:[], clases:[], tareas:[], estudiantes:[], entregas:[] }));
+    if (fs.existsSync(DB_SEED)) {
+      fs.copyFileSync(DB_SEED, DB_PATH);
+      console.log("📦 DB inicializada desde semilla");
+    } else {
+      fs.writeFileSync(DB_PATH, JSON.stringify({
+        usuarios:[], clases:[], tareas:[], estudiantes:[],
+        entregas:[], estudiantesReg:[], notas:[]
+      }));
+    }
   }
   const db = JSON.parse(fs.readFileSync(DB_PATH,"utf8"));
-  if (!db.tareas)      db.tareas      = [];
-  if (!db.estudiantes) db.estudiantes = [];
-  if (!db.entregas)    db.entregas    = [];
+  if (!db.tareas)         db.tareas         = [];
+  if (!db.estudiantes)    db.estudiantes    = [];
+  if (!db.entregas)       db.entregas       = [];
+  if (!db.estudiantesReg) db.estudiantesReg = [];
+  if (!db.notas)          db.notas          = [];
   return db;
 };
 const guardarDB = (db) => fs.writeFileSync(DB_PATH, JSON.stringify(db,null,2));
