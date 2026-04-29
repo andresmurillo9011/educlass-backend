@@ -155,19 +155,49 @@ app.delete("/clase/:id", (req,res) => {
 //  SISTEMA DE ESTUDIANTES Y TAREAS
 // ======================================================
 
-// Registro de estudiante (cuenta propia)
+// Registro de estudiante (cuenta propia o vincular con pre-registrado)
 app.post("/registro-estudiante", async (req,res) => {
   try {
-    const { nombre, usuario, password, grado, institucion } = req.body;
-    if (!nombre||!usuario||!password) return res.status(400).json({ mensaje:"Completa nombre, usuario y contraseña" });
+    const { nombre, usuario, password, grado, institucion, documento } = req.body;
+    if (!usuario||!password) return res.status(400).json({ mensaje:"Completa usuario y contraseña" });
     const db = leerDB();
     if (!db.estudiantesReg) db.estudiantesReg = [];
-    if (db.estudiantesReg.find(e=>e.usuario===usuario)) return res.status(400).json({ mensaje:"Ese usuario ya existe" });
+    
+    // Check if usuario already exists as a NEW account (not pre-registered)
+    const existente = db.estudiantesReg.find(e=>e.usuario===usuario && !e.preRegistrado);
+    if (existente) return res.status(400).json({ mensaje:"Ese usuario ya existe. Elige otro." });
+    
+    // Check if there is a pre-registered student with same documento or usuario
+    const preReg = db.estudiantesReg.find(e=>
+      (documento && e.documento===documento) ||
+      (e.usuario===usuario && e.preRegistrado)
+    );
+    
+    if (preReg) {
+      // Activate pre-registered account with new password
+      const idx = db.estudiantesReg.findIndex(e=>e.id===preReg.id);
+      const hash = await bcrypt.hash(password,10);
+      db.estudiantesReg[idx].password = hash;
+      db.estudiantesReg[idx].passwordPlain = null;
+      db.estudiantesReg[idx].preRegistrado = false;
+      if (usuario !== preReg.usuario) db.estudiantesReg[idx].usuario = usuario;
+      guardarDB(db);
+      const { password:_, passwordPlain:__, ...pub } = db.estudiantesReg[idx];
+      return res.json({ mensaje:"Cuenta activada exitosamente ✅", estudiante:pub });
+    }
+    
+    // New student account
     const hash = await bcrypt.hash(password,10);
-    const nuevo = { id:uuidv4(), nombre, usuario, password:hash, grado:grado||"", institucion:institucion||"", creadoEn:new Date().toISOString() };
+    const nuevo = {
+      id:uuidv4(), nombre:nombre||usuario, usuario, password:hash,
+      documento:documento||"", grado:grado||"", grupo:"",
+      institucion:institucion||"I.E.R. SANTIAGO DE LA SELVA",
+      creadoEn:new Date().toISOString(), preRegistrado:false
+    };
     db.estudiantesReg.push(nuevo);
     guardarDB(db);
-    res.json({ mensaje:"Registro exitoso ✅" });
+    const { password:_, ...pub } = nuevo;
+    res.json({ mensaje:"Registro exitoso ✅", estudiante:pub });
   } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
 });
 
@@ -208,11 +238,37 @@ app.post("/login-estudiante-reg", async (req,res) => {
 app.get("/estudiantes-grado/:grado", (req,res) => {
   try {
     const db = leerDB();
-    const grado = req.params.grado.replace("°","").padStart(2,"0");
+    const gParam = req.params.grado;
+    let lista;
+    if (gParam === "todos") {
+      lista = (db.estudiantesReg||[]);
+    } else {
+      const gradoNorm = gParam.replace("°","").padStart(2,"0");
+      lista = (db.estudiantesReg||[]).filter(e=>{
+        const eg = (e.grado||"").replace("°","").padStart(2,"0");
+        return eg===gradoNorm || e.grado===gParam;
+      });
+    }
+    lista = lista.map(e=>({
+      id:e.id, nombre:e.nombre, usuario:e.usuario,
+      documento:e.documento, grado:e.grado, grupo:e.grupo||"",
+      activo:!e.preRegistrado
+    })).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+    res.json({ estudiantes:lista });
+  } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
+});
+
+// Buscar estudiante por nombre o documento
+app.get("/buscar-estudiante", (req,res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.length < 2) return res.json({ estudiantes:[] });
+    const db = leerDB();
+    const q2 = q.toLowerCase();
     const lista = (db.estudiantesReg||[])
-      .filter(e=>e.grado===grado||e.grado===req.params.grado)
-      .map(e=>({ id:e.id, nombre:e.nombre, usuario:e.usuario, documento:e.documento, grado:e.grado, grupo:e.grupo }))
-      .sort((a,b)=>a.nombre.localeCompare(b.nombre));
+      .filter(e=>e.nombre?.toLowerCase().includes(q2)||e.documento?.includes(q)||e.usuario?.toLowerCase().includes(q2))
+      .map(e=>({ id:e.id, nombre:e.nombre, usuario:e.usuario, documento:e.documento, grado:e.grado, activo:!e.preRegistrado }))
+      .slice(0,20);
     res.json({ estudiantes:lista });
   } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
 });
@@ -487,22 +543,55 @@ app.post("/entregar-tarea", uploadEntrega.single("archivo"), async (req,res) => 
   } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
 });
 
-// Ver entregas de una tarea
+// Ver entregas de una tarea con listado completo
 app.get("/entregas-tarea/:tareaId", (req,res) => {
   try {
     const db = leerDB();
     const tarea = db.tareas.find(t=>t.id===req.params.tareaId);
     if (!tarea) return res.status(404).json({ mensaje:"No encontrada" });
-    const entregas     = (db.entregas||[]).filter(e=>e.tareaId===req.params.tareaId);
-    const asignados    = tarea.estudiantesAsignados||[];
+    const entregas = (db.entregas||[]).filter(e=>e.tareaId===req.params.tareaId);
+    
+    // Todos los asignados (temp + registrados)
+    const asignados = tarea.estudiantesAsignados||[];
     const regAsignados = (tarea.estudiantesReg||[]).map(id=>{
       const est = (db.estudiantesReg||[]).find(e=>e.id===id);
-      return est ? { id:est.id, nombre:est.nombre } : null;
+      return est ? { id:est.id, nombre:est.nombre, grado:est.grado||tarea.grado } : null;
     }).filter(Boolean);
+    
     const todosAsignados = [...asignados, ...regAsignados];
-    const sinEntregar = todosAsignados.filter(e=>!entregas.find(en=>en.estudianteId===e.id||en.estudianteRegId===e.id))
-      .map(e=>({ estudianteId:e.id, nombreEstudiante:e.nombre, estado:"pendiente" }));
-    res.json({ entregas, sinEntregar, total:todosAsignados.length });
+    
+    // Build full list: entregaron + pendientes
+    const listadoCompleto = todosAsignados.map(est=>{
+      const ent = entregas.find(e=>e.estudianteId===est.id||e.estudianteRegId===est.id);
+      return {
+        estudianteId:   est.id,
+        nombreEstudiante: est.nombre,
+        grado:          est.grado||"",
+        entregada:      !!ent,
+        entregadoEn:    ent?.entregadoEn||null,
+        calificacion:   ent?.calificacion||null,
+        comentario:     ent?.comentario||"",
+        respuesta:      ent?.respuesta||"",
+        respuestasActividad: ent?.respuestasActividad||null,
+        resultadoDetalle: ent?.resultadoDetalle||null,
+        archivoNombre:  ent?.archivoNombre||"",
+        entregaId:      ent?.id||null,
+        autoCalificada: ent?.autoCalificada||false,
+        estado:         ent ? (ent.calificacion!=null?"calificado":"entregado") : "pendiente"
+      };
+    }).sort((a,b)=>a.nombreEstudiante.localeCompare(b.nombreEstudiante));
+    
+    const sinEntregar = listadoCompleto.filter(e=>!e.entregada);
+    const conEntrega  = listadoCompleto.filter(e=>e.entregada);
+    
+    res.json({ 
+      entregas: conEntrega,
+      sinEntregar,
+      listadoCompleto,
+      total: todosAsignados.length,
+      totalEntregas: conEntrega.length,
+      totalPendientes: sinEntregar.length
+    });
   } catch(e) { res.status(500).json({ mensaje:"Error: "+e.message }); }
 });
 
