@@ -4,8 +4,8 @@ generator client {
 
 datasource db {
   provider  = "postgresql"
-  url       = "postgresql://postgres:Jairmurillo09*haland@db.kepsanxscdxeihsbhtwq.supabase.co:6543/postgres?pgbouncer=true&connection_limit=1"
-  directUrl = "postgresql://postgres:Jairmurillo09*haland@db.kepsanxscdxeihsbhtwq.supabase.co:5432/postgres"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Institution {
