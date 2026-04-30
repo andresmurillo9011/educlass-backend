@@ -35,6 +35,9 @@ const leerDB = () => {
   if (!db.tareas)         db.tareas         = [];
   if (!db.estudiantes)    db.estudiantes    = [];
   if (!db.entregas)       db.entregas       = [];
+  const normId = s => (s||"sin_institucion").toLowerCase().replace(/s+/g,"_").replace(/[^a-z0-9_]/g,"");
+  db.usuarios.forEach(u => { if (!u.institucionId) u.institucionId = normId(u.institucion); });
+  db.estudiantesReg.forEach(e => { if (!e.institucionId) e.institucionId = normId(e.institucion); });
   return db;
 };
 const guardarDB = db => fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
@@ -256,8 +259,9 @@ app.post("/registro", async (req, res) => {
     if (db.usuarios.find(u => u.email === email))
       return res.status(400).json({ mensaje:"Correo ya registrado" });
     const hash = await bcrypt.hash(password, 10);
+    const instId = (institucion||"sin_institucion").toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/g,"");
     db.usuarios.push({ id:uuidv4(), nombre, email, password:hash,
-      institucion:institucion||"", cargo:cargo||"Docente", ciudad:ciudad||"",
+      institucion:institucion||"", institucionId:instId, cargo:cargo||"Docente", ciudad:ciudad||"",
       logoPath:"", banderaPath:"", creadoEn:new Date().toISOString() });
     guardarDB(db);
     res.json({ mensaje:"Registro exitoso ✅" });
@@ -284,7 +288,10 @@ app.post("/actualizar-perfil", uploadFields, async (req, res) => {
     const idx = db.usuarios.findIndex(u => u.id === userId);
     if (idx===-1) return res.status(404).json({ mensaje:"No encontrado" });
     if (nombre)      db.usuarios[idx].nombre      = nombre;
-    if (institucion) db.usuarios[idx].institucion  = institucion;
+    if (institucion) {
+      db.usuarios[idx].institucion  = institucion;
+      db.usuarios[idx].institucionId = institucion.toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/g,"");
+    }
     if (cargo)       db.usuarios[idx].cargo        = cargo;
     if (ciudad)      db.usuarios[idx].ciudad       = ciudad;
     if (req.files?.logo?.[0])    db.usuarios[idx].logoPath    = `uploads/${req.files.logo[0].filename}`;
@@ -307,8 +314,9 @@ app.post("/registro-estudiante", async (req, res) => {
     if (db.estudiantesReg.find(e => e.usuario === usuario))
       return res.status(400).json({ mensaje:"Ese usuario ya existe" });
     const hash = await bcrypt.hash(password, 10);
+    const instIdEst = (institucion||"sin_institucion").toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/g,"");
     db.estudiantesReg.push({ id:uuidv4(), nombre, usuario, password:hash,
-      grado:grado||"", institucion:institucion||"", creadoEn:new Date().toISOString() });
+      grado:grado||"", institucion:institucion||"", institucionId:instIdEst, creadoEn:new Date().toISOString() });
     guardarDB(db);
     res.json({ mensaje:"Cuenta creada ✅" });
   } catch(e) { res.status(500).json({ mensaje:e.message }); }
@@ -341,7 +349,11 @@ app.post("/login-estudiante-reg", async (req, res) => {
 app.get("/todos-estudiantes", (req, res) => {
   try {
     const db = leerDB();
+    const docenteId = req.query.docenteId;
+    const docente = docenteId ? db.usuarios.find(u => u.id === docenteId) : null;
+    const instId = docente?.institucionId || null;
     const lista = db.estudiantesReg
+      .filter(e => !instId || e.institucionId === instId || e.institucion === docente?.institucion)
       .map(e => ({ id:e.id, nombre:e.nombre, usuario:e.usuario, grado:e.grado, institucion:e.institucion }))
       .sort((a,b) => a.nombre.localeCompare(b.nombre));
     res.json({ estudiantes:lista });
@@ -352,8 +364,15 @@ app.get("/estudiantes-grado/:grado", (req, res) => {
   try {
     const db    = leerDB();
     const grado = req.params.grado;
+    const docenteId = req.query.docenteId;
+    const docente = docenteId ? db.usuarios.find(u => u.id === docenteId) : null;
+    const instId = docente?.institucionId || null;
     const lista = db.estudiantesReg
-      .filter(e => e.grado===grado || e.grado===grado.replace("°","") || (e.grado+"°")===grado)
+      .filter(e => {
+        const gradoOk = e.grado===grado || e.grado===grado.replace("°","") || (e.grado+"°")===grado;
+        const instOk  = !instId || e.institucionId === instId || e.institucion === docente?.institucion;
+        return gradoOk && instOk;
+      })
       .map(e => ({ id:e.id, nombre:e.nombre, usuario:e.usuario, grado:e.grado }))
       .sort((a,b) => a.nombre.localeCompare(b.nombre));
     res.json({ estudiantes:lista });
@@ -362,8 +381,14 @@ app.get("/estudiantes-grado/:grado", (req, res) => {
 
 app.get("/grados-disponibles", (req, res) => {
   try {
-    const db     = leerDB();
-    const grados = [...new Set(db.estudiantesReg.map(e => e.grado).filter(Boolean))].sort();
+    const db = leerDB();
+    const docenteId = req.query.docenteId;
+    const docente = docenteId ? db.usuarios.find(u => u.id === docenteId) : null;
+    const instId = docente?.institucionId || null;
+    const estudiantes = db.estudiantesReg.filter(e =>
+      !instId || e.institucionId === instId || e.institucion === docente?.institucion
+    );
+    const grados = [...new Set(estudiantes.map(e => e.grado).filter(Boolean))].sort();
     res.json({ grados });
   } catch(e) { res.status(500).json({ mensaje:e.message }); }
 });
