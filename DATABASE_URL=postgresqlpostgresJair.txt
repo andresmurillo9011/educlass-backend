@@ -1,0 +1,3 @@
+DATABASE_URL="postgresql://postgres:Jairmurillo09*haland@db.kepsanxscdxeihsbhtwq.supabase.co:5432/postgres"
+JWT_SECRET="educlass_jwt_2024_secreto_largo"
+PORT=5000

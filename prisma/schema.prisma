@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Institution {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  slug      String   @unique
+  city      String?
+  createdAt DateTime @default(now())
+
+  users     User[]
+  students  Student[]
+  tasks     Task[]
+
+  @@map("institutions")
+}
+
+model User {
+  id          String      @id @default(uuid())
+  name        String
+  email       String      @unique
+  password    String
+  role        Role        @default(TEACHER)
+  cargo       String?     @default("Docente")
+  logoPath    String?
+  banderaPath String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+
+  classes     Class[]
+  tasks       Task[]
+
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+model Student {
+  id          String   @id @default(uuid())
+  name        String
+  username    String   @unique
+  password    String
+  grade       String
+  createdAt   DateTime @default(now())
+
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+
+  assignments Assignment[]
+
+  @@map("students")
+}
+
+model Class {
+  id        String   @id @default(uuid())
+  content   String
+  data      Json
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("classes")
+}
+
+model Task {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  type        TaskType  @default(TALLER)
+  area        String?
+  grade       String?
+  dueDate     DateTime?
+  activity    Json?
+  code        String    @unique @default(cuid())
+  status      String    @default("active")
+  createdAt   DateTime  @default(now())
+
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+
+  assignments Assignment[]
+
+  @@map("tasks")
+}
+
+enum TaskType {
+  TALLER
+  EVALUACION
+  QUIZ
+  COMPLETAR
+  VERDADERO_FALSO
+  RELACIONAR
+}
+
+model Assignment {
+  id          String           @id @default(uuid())
+  status      AssignmentStatus @default(PENDING)
+  grade       Float?
+  comment     String?
+  response    String?
+  responses   Json?
+  filePath    String?
+  fileName    String?
+  autoGraded  Boolean          @default(false)
+  detail      Json?
+  submittedAt DateTime?
+  gradedAt    DateTime?
+  createdAt   DateTime         @default(now())
+
+  taskId    String
+  task      Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, studentId])
+  @@map("assignments")
+}
+
+enum AssignmentStatus {
+  PENDING
+  SUBMITTED
+  GRADED
+}

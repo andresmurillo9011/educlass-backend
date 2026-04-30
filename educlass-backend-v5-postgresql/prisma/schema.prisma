@@ -1,0 +1,150 @@
+// ======================================================
+//  EduClass — Schema Prisma (PostgreSQL)
+//  Multi-tenant: cada institución tiene sus propios datos
+// ======================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Instituciones ─────────────────────────────────────
+model Institution {
+  id        String   @id @default(uuid())
+  name      String   @unique  // Nombre normalizado
+  slug      String   @unique  // ej: "ie-rural-la-esperanza"
+  city      String?
+  createdAt DateTime @default(now())
+
+  users     User[]
+  students  Student[]
+  tasks     Task[]
+
+  @@map("institutions")
+}
+
+// ── Usuarios (Docentes / Admins) ──────────────────────
+model User {
+  id            String      @id @default(uuid())
+  name          String
+  email         String      @unique
+  password      String      // bcrypt hash
+  role          Role        @default(TEACHER)
+  cargo         String?     @default("Docente")
+  logoPath      String?
+  banderaPath   String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+
+  classes       Class[]
+  tasks         Task[]
+
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+// ── Estudiantes ───────────────────────────────────────
+model Student {
+  id            String      @id @default(uuid())
+  name          String
+  username      String      @unique
+  password      String      // bcrypt hash
+  grade         String      // "6°", "7°", etc.
+  createdAt     DateTime    @default(now())
+
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+
+  assignments   Assignment[]
+
+  @@map("students")
+}
+
+// ── Clases/Guías generadas ────────────────────────────
+model Class {
+  id        String   @id @default(uuid())
+  content   String   // contenido generado por IA
+  data      Json     // área, grado, tema, etc.
+  createdAt DateTime @default(now())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("classes")
+}
+
+// ── Tareas ────────────────────────────────────────────
+model Task {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  type        TaskType  @default(TALLER)
+  area        String?
+  grade       String?
+  dueDate     DateTime?
+  activity    Json?     // preguntas generadas por IA
+  code        String    @unique @default(cuid())
+  status      String    @default("active")
+  createdAt   DateTime  @default(now())
+
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+
+  assignments   Assignment[]
+
+  @@map("tasks")
+}
+
+enum TaskType {
+  TALLER
+  EVALUACION
+  QUIZ
+  COMPLETAR
+  VERDADERO_FALSO
+  RELACIONAR
+}
+
+// ── Asignaciones (Tarea → Estudiante) ────────────────
+model Assignment {
+  id          String           @id @default(uuid())
+  status      AssignmentStatus @default(PENDING)
+  grade       Float?           // calificación 0-5
+  comment     String?
+  response    String?
+  responses   Json?            // respuestas actividad interactiva
+  filePath    String?
+  fileName    String?
+  autoGraded  Boolean          @default(false)
+  detail      Json?            // detalle autocorrección
+  submittedAt DateTime?
+  gradedAt    DateTime?
+  createdAt   DateTime         @default(now())
+
+  taskId      String
+  task        Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, studentId]) // un estudiante no puede tener 2 asignaciones de la misma tarea
+  @@map("assignments")
+}
+
+enum AssignmentStatus {
+  PENDING
+  SUBMITTED
+  GRADED
+}
