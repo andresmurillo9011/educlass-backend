@@ -11,7 +11,7 @@ const { PrismaClient } = require("@prisma/client");
 const { authDocente, authEstudiante, generarToken, slugify } = require("./middleware/auth");
 
 const app    = express();
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
 
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
