@@ -5,7 +5,7 @@ const { PrismaClient } = require("@prisma/client");
 const { generarToken, slugify } = require("../middleware/auth");
 
 const router = express.Router();
-const prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
+const prisma = new PrismaClient();
 
 // ======================================================
 //  REGISTRO DOCENTE

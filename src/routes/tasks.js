@@ -4,7 +4,7 @@ const { PrismaClient } = require("@prisma/client");
 const { authDocente, authEstudiante } = require("../middleware/auth");
 
 const router = express.Router();
-const prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
+const prisma = new PrismaClient();
 
 // ======================================================
 //  CREAR TAREA Y ASIGNAR A ESTUDIANTES
