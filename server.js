@@ -35,7 +35,7 @@ const leerDB = () => {
   if (!db.tareas)         db.tareas         = [];
   if (!db.estudiantes)    db.estudiantes    = [];
   if (!db.entregas)       db.entregas       = [];
-  const normId = s => (s||"sin_institucion").toLowerCase().replace(/s+/g,"_").replace(/[^a-z0-9_]/g,"");
+  const normId = s => (s||"").toLowerCase().trim().replace(/\s+/g,"_").replace(/[^a-z0-9_]/g,"");
   db.usuarios.forEach(u => { if (!u.institucionId) u.institucionId = normId(u.institucion); });
   db.estudiantesReg.forEach(e => { if (!e.institucionId) e.institucionId = normId(e.institucion); });
   return db;
@@ -351,9 +351,13 @@ app.get("/todos-estudiantes", (req, res) => {
     const db = leerDB();
     const docenteId = req.query.docenteId;
     const docente = docenteId ? db.usuarios.find(u => u.id === docenteId) : null;
-    const instId = docente?.institucionId || null;
+    const instNorm = docente?.institucion ? docente.institucion.toLowerCase().trim() : null;
     const lista = db.estudiantesReg
-      .filter(e => !instId || e.institucionId === instId || e.institucion === docente?.institucion)
+      .filter(e => {
+        if (!instNorm) return true; // si no hay docente, mostrar todos
+        const eInstNorm = (e.institucion||"").toLowerCase().trim();
+        return eInstNorm === instNorm || eInstNorm === "" || !e.institucion;
+      })
       .map(e => ({ id:e.id, nombre:e.nombre, usuario:e.usuario, grado:e.grado, institucion:e.institucion }))
       .sort((a,b) => a.nombre.localeCompare(b.nombre));
     res.json({ estudiantes:lista });
@@ -367,10 +371,13 @@ app.get("/estudiantes-grado/:grado", (req, res) => {
     const docenteId = req.query.docenteId;
     const docente = docenteId ? db.usuarios.find(u => u.id === docenteId) : null;
     const instId = docente?.institucionId || null;
+    const instNorm2 = docente?.institucion ? docente.institucion.toLowerCase().trim() : null;
     const lista = db.estudiantesReg
       .filter(e => {
         const gradoOk = e.grado===grado || e.grado===grado.replace("°","") || (e.grado+"°")===grado;
-        const instOk  = !instId || e.institucionId === instId || e.institucion === docente?.institucion;
+        if (!instNorm2) return gradoOk;
+        const eInstNorm = (e.institucion||"").toLowerCase().trim();
+        const instOk = eInstNorm === instNorm2 || eInstNorm === "" || !e.institucion;
         return gradoOk && instOk;
       })
       .map(e => ({ id:e.id, nombre:e.nombre, usuario:e.usuario, grado:e.grado }))
@@ -385,9 +392,12 @@ app.get("/grados-disponibles", (req, res) => {
     const docenteId = req.query.docenteId;
     const docente = docenteId ? db.usuarios.find(u => u.id === docenteId) : null;
     const instId = docente?.institucionId || null;
-    const estudiantes = db.estudiantesReg.filter(e =>
-      !instId || e.institucionId === instId || e.institucion === docente?.institucion
-    );
+    const instNorm3 = docente?.institucion ? docente.institucion.toLowerCase().trim() : null;
+    const estudiantes = db.estudiantesReg.filter(e => {
+      if (!instNorm3) return true;
+      const eInstNorm = (e.institucion||"").toLowerCase().trim();
+      return eInstNorm === instNorm3 || eInstNorm === "" || !e.institucion;
+    });
     const grados = [...new Set(estudiantes.map(e => e.grado).filter(Boolean))].sort();
     res.json({ grados });
   } catch(e) { res.status(500).json({ mensaje:e.message }); }
