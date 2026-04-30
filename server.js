@@ -709,7 +709,7 @@ WEBGRAFIA: (3 fuentes APA reales)
 
 Redacta en español impecable. Todo contextualizado Colombia.`;
 
-    const systemPrompt = "Eres el mejor pedagogo de Colombia. Guías de altísima calidad. Respeta ===SECCION===.";
+    const systemPrompt = "Eres el mejor pedagogo de Colombia. OBLIGATORIO: usa EXACTAMENTE el formato ===NOMBRE_SECCION=== para cada sección. NUNCA omitas estas marcas. Ejemplo: ===APERTURA=== seguido del contenido. Guías de altísima calidad contextualizadas en Colombia.";
     const contenido = await llamarIA(prompt, systemPrompt, 4096, 0.7);
     res.json({ contenido, ok:true });
   } catch(e) {
@@ -729,7 +729,21 @@ app.post("/exportar-word", async (req, res) => {
     const { Document,Packer,Paragraph,TextRun,Table,TableRow,TableCell,AlignmentType,BorderStyle,WidthType,ShadingType,VerticalAlign,ImageRun } = require("docx");
     const bloques={};let secActual=null;
     for(const linea of contenido.split("\n")){const m=linea.match(/^===(\w+)===/);if(m){secActual=m[1];bloques[secActual]=[];continue;}if(secActual)bloques[secActual].push(linea);}
-    const getB=k=>(bloques[k]||[]).join("\n").replace(/\*\*/g,"").replace(/^[\s\n]+|[\s\n]+$/g,"");
+    // Si no hay secciones, distribuir el contenido completo en las secciones principales
+    const tieneSecciones = Object.keys(bloques).length > 0;
+    if (!tieneSecciones) {
+      const lineas = contenido.split("\n");
+      const total = lineas.length;
+      const chunk = Math.floor(total / 5);
+      bloques["APERTURA"]         = lineas.slice(0, chunk);
+      bloques["SABERES_PREVIOS"]  = lineas.slice(chunk, chunk*2);
+      bloques["DESARROLLO"]       = lineas.slice(chunk*2, chunk*3);
+      bloques["RETROALIMENTACION"]= lineas.slice(chunk*3, chunk*4);
+      bloques["CIERRE"]           = lineas.slice(chunk*4);
+      bloques["TALLER"]           = lineas.slice(chunk, chunk*2);
+      bloques["EXTRAS"]           = [];
+    }
+    const getB=k=>(bloques[k]||[]).join("\n").replace(/\*\*/g,"").replace(/##\s*/g,"").replace(/^[\s\n]+|[\s\n]+$/g,"") || contenido.substring(0,500);
     const AZUL="1B4F8A",AZUL_CL="D6E4F7",NEGRO="000000",GRIS="F2F2F2",BLANCO="FFFFFF";
     const bN={style:BorderStyle.SINGLE,size:6,color:NEGRO};const bA={style:BorderStyle.SINGLE,size:8,color:AZUL};
     const bAll={top:bN,bottom:bN,left:bN,right:bN};const bAllA={top:bA,bottom:bA,left:bA,right:bA};const TW=11106;
@@ -791,7 +805,20 @@ app.post("/exportar-pdf", async (req, res) => {
     const gradoN=parseInt(grado)||0;const nivelLabel=nivelEducativo==="preescolar"?"Preescolar":nivelEducativo==="primaria"?"Primaria":nivelEducativo==="media_tecnica"?"Media Técnica":nivelEducativo==="bachillerato"?"Bachillerato":gradoN<=5?"Primaria":gradoN<=9?"Bachillerato":"Media/Bachillerato";
     const PDFDocument=require("pdfkit");const bloques={};let secActual=null;
     for(const linea of contenido.split("\n")){const m=linea.match(/^===(\w+)===/);if(m){secActual=m[1];bloques[secActual]=[];continue;}if(secActual)bloques[secActual].push(linea);}
-    const getB=k=>(bloques[k]||[]).join("\n").replace(/\*\*/g,"").replace(/^[\s\n]+|[\s\n]+$/g,"");
+    const tieneSecciones2 = Object.keys(bloques).length > 0;
+    if (!tieneSecciones2) {
+      const lineas = contenido.split("\n");
+      const total = lineas.length;
+      const chunk = Math.floor(total / 5);
+      bloques["APERTURA"]         = lineas.slice(0, chunk);
+      bloques["SABERES_PREVIOS"]  = lineas.slice(chunk, chunk*2);
+      bloques["DESARROLLO"]       = lineas.slice(chunk*2, chunk*3);
+      bloques["RETROALIMENTACION"]= lineas.slice(chunk*3, chunk*4);
+      bloques["CIERRE"]           = lineas.slice(chunk*4);
+      bloques["TALLER"]           = lineas.slice(chunk, chunk*2);
+      bloques["EXTRAS"]           = [];
+    }
+    const getB=k=>(bloques[k]||[]).join("\n").replace(/\*\*/g,"").replace(/##\s*/g,"").replace(/^[\s\n]+|[\s\n]+$/g,"") || contenido.substring(0,500);
     const AZUL="#1B4F8A",AZUL_CL="#D6E4F7",NEGRO="#000000",GRIS="#F2F2F2",BLANCO="#FFFFFF",GRIS_B="#CCCCCC";
     const doc=new PDFDocument({margin:30,size:"LETTER",bufferPages:true});const buffers=[];doc.on("data",d=>buffers.push(d));const fin=new Promise(r=>doc.on("end",r));
     const FB="Helvetica-Bold",FN="Helvetica",FI="Helvetica-Oblique";const ML=30,PW=doc.page.width-60;
