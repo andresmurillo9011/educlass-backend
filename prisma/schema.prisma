@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url = "postgresql://neondb_owner:npg_WUEpy2wYx9Ql@ep-wild-pine-amupyy85.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require"
+  url      = env("DATABASE_URL")
 }
 
 model Institution {
@@ -24,23 +24,16 @@ model User {
   name          String
   email         String      @unique
   password      String
-  role          Role        @default(TEACHER)
-  cargo         String?     @default("Docente")
+  cargo         String      @default("Docente")
   logoPath      String?
   banderaPath   String?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
   institutionId String
   institution   Institution @relation(fields: [institutionId], references: [id])
   classes       Class[]
   tasks         Task[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
   @@map("users")
-}
-
-enum Role {
-  ADMIN
-  TEACHER
-  STUDENT
 }
 
 model Student {
@@ -49,10 +42,10 @@ model Student {
   username      String      @unique
   password      String
   grade         String
-  createdAt     DateTime    @default(now())
   institutionId String
   institution   Institution @relation(fields: [institutionId], references: [id])
   assignments   Assignment[]
+  createdAt     DateTime    @default(now())
   @@map("students")
 }
 
@@ -60,9 +53,9 @@ model Class {
   id        String   @id @default(uuid())
   content   String
   data      Json
-  createdAt DateTime @default(now())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
   @@map("classes")
 }
 
@@ -70,55 +63,38 @@ model Task {
   id            String      @id @default(uuid())
   title         String
   description   String?
-  type          TaskType    @default(TALLER)
+  type          String      @default("taller")
   area          String?
   grade         String?
   dueDate       DateTime?
   activity      Json?
   code          String      @unique @default(cuid())
-  status        String      @default("active")
-  createdAt     DateTime    @default(now())
   userId        String
   user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   institutionId String
   institution   Institution @relation(fields: [institutionId], references: [id])
   assignments   Assignment[]
+  createdAt     DateTime    @default(now())
   @@map("tasks")
 }
 
-enum TaskType {
-  TALLER
-  EVALUACION
-  QUIZ
-  COMPLETAR
-  VERDADERO_FALSO
-  RELACIONAR
-}
-
 model Assignment {
-  id          String           @id @default(uuid())
-  status      AssignmentStatus @default(PENDING)
+  id          String    @id @default(uuid())
+  status      String    @default("pending")
   grade       Float?
   comment     String?
   response    String?
   responses   Json?
-  filePath    String?
   fileName    String?
-  autoGraded  Boolean          @default(false)
+  autoGraded  Boolean   @default(false)
   detail      Json?
   submittedAt DateTime?
   gradedAt    DateTime?
-  createdAt   DateTime         @default(now())
   taskId      String
-  task        Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
   studentId   String
-  student     Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student     Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
   @@unique([taskId, studentId])
   @@map("assignments")
-}
-
-enum AssignmentStatus {
-  PENDING
-  SUBMITTED
-  GRADED
 }
