@@ -118,6 +118,9 @@ const llamarIA = async (prompt, system = "", maxTokens = 4096, temp = 0.7) => {
 app.get("/", (_req, res) => res.json({ ok: true, msg: "EduClass v6 ✅" }));
 app.get("/estado-ia", (_req, res) => res.json({ proveedores: AI.map(p => ({ nombre: p.nombre, activa: p.activa, errores: p.errores })) }));
 
+// ── SUPER ADMIN ───────────────────────────────────────
+app.use("/superadmin", require("./routes/superadmin"));
+
 // ── AUTH DOCENTES ─────────────────────────────────────
 app.post("/auth/registro", async (req, res) => {
   try {
@@ -142,8 +145,8 @@ app.post("/auth/login", async (req, res) => {
     if (!user) return res.status(401).json({ mensaje: "Correo no registrado" });
     if (!await bcrypt.compare(password || "", user.password)) return res.status(401).json({ mensaje: "Contraseña incorrecta" });
     const { password: _, ...pub } = user;
-    const token = jwt.sign({ id: user.id, role: "teacher", institutionId: user.institutionId }, JWT_SECRET, { expiresIn: "30d" });
-    res.json({ usuario: pub, token });
+    const token = jwt.sign({ id: user.id, role: "teacher", institutionId: user.institutionId, isSuperAdmin: user.isSuperAdmin || false }, JWT_SECRET, { expiresIn: "30d" });
+    res.json({ usuario: { ...pub, isSuperAdmin: user.isSuperAdmin || false }, token });
   } catch (e) { res.status(500).json({ mensaje: e.message }); }
 });
 
