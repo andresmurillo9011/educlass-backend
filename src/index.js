@@ -230,7 +230,7 @@ app.get("/students/grados", authMiddleware, async (req, res) => {
 // ── CLASES ────────────────────────────────────────────
 app.post("/guardar-clase", authMiddleware, async (req, res) => {
   try {
-    const clase = await prisma.class.create({ data: { content: req.body.contenido, data: req.body.datos, userId: req.user.id } });
+    const clase = await prisma.class.create({ data: { content: req.body.contenido, data: JSON.stringify(req.body.datos || {}), userId: req.user.id } });
     res.json({ ok: true, id: clase.id });
   } catch (e) { res.status(500).json({ mensaje: e.message }); }
 });
@@ -241,7 +241,7 @@ app.get("/mis-clases", authMiddleware, async (req, res) => {
       where: { userId: req.user.id }, orderBy: { createdAt: "desc" },
       select: { id: true, createdAt: true, data: true, content: true }
     });
-    res.json({ clases: clases.map(c => ({ id: c.id, creadaEn: c.createdAt, datos: c.data, resumen: c.content?.substring(0, 200) })) });
+    res.json({ clases: clases.map(c => ({ id: c.id, creadaEn: c.createdAt, datos: (function(){ try{ return JSON.parse(c.data||'{}'); }catch(e){ return {}; } })(), resumen: c.content?.substring(0, 200) })) });
   } catch (e) { res.status(500).json({ mensaje: e.message }); }
 });
 
@@ -249,7 +249,7 @@ app.get("/clase/:id", authMiddleware, async (req, res) => {
   try {
     const clase = await prisma.class.findFirst({ where: { id: req.params.id, userId: req.user.id } });
     if (!clase) return res.status(404).json({ mensaje: "No encontrada" });
-    res.json({ clase: { id: clase.id, contenido: clase.content, datos: clase.data, creadaEn: clase.createdAt } });
+    res.json({ clase: { id: clase.id, contenido: clase.content, datos: (function(){ try{ return JSON.parse(clase.data||'{}'); }catch(e){ return {}; } })(), creadaEn: clase.createdAt } });
   } catch (e) { res.status(500).json({ mensaje: e.message }); }
 });
 
@@ -279,7 +279,7 @@ app.post("/tasks", authMiddleware, async (req, res) => {
       data: {
         title: titulo, description: descripcion || "", type: tipo || "taller",
         area, grade: grado || asignarGrado || "", dueDate: fechaEntrega ? new Date(fechaEntrega) : null,
-        activity: actividad || null, userId: req.user.id, institutionId: req.user.institutionId,
+        activity: actividad ? JSON.stringify(actividad) : null, userId: req.user.id, institutionId: req.user.institutionId,
         assignments: { create: ids.map(studentId => ({ studentId, status: "pending" })) }
       },
       include: { _count: { select: { assignments: true } } }
@@ -387,7 +387,7 @@ app.post("/tasks/entregar", authEst, uploadEnt.single("archivo"), async (req, re
 
     const updated = await prisma.assignment.update({
       where: { id: assignment.id },
-      data: { response: respuesta || "", responses: respAct, status: autoGraded ? "graded" : "submitted", submittedAt: new Date(), grade, autoGraded, detail, ...(autoGraded ? { gradedAt: new Date() } : {}), ...(req.file ? { fileName: req.file.originalname } : {}) }
+      data: { response: respuesta || "", responses: JSON.stringify(respAct || {}), status: autoGraded ? "graded" : "submitted", submittedAt: new Date(), grade, autoGraded, detail, ...(autoGraded ? { gradedAt: new Date() } : {}), ...(req.file ? { fileName: req.file.originalname } : {}) }
     });
     res.json({ ok: true, mensaje: "Tarea entregada ✅", autoCalificada: autoGraded, notaAuto: grade, resultadoDetalle: detail });
   } catch (e) { res.status(500).json({ mensaje: e.message }); }

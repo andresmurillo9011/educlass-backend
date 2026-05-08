@@ -1,0 +1,13 @@
+# ============================================================
+# BACKEND .env — EduClass Local con SQLite
+# ============================================================
+
+DATABASE_URL="file:./dev.db"
+JWT_SECRET="edupanel_iess_local_2026"
+PORT=5000
+
+# CLAVES DE IA
+GROQ_KEY=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
+GEMINI_KEY=
+TOGETHER_KEY=
+OPENROUTER_KEY=

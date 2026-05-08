@@ -64,7 +64,7 @@ const uploadEnt = multer({ storage:storageEnt, limits:{ fileSize:20*1024*1024 } 
 const AI_PROVIDERS = [
   {
     nombre: "Groq",
-    apiKey: "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",
+    apiKey: "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",
     tipo: "groq",
     activa: true,
     errores: 0
