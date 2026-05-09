@@ -15,42 +15,37 @@ router.post("/", authDocente, async (req, res) => {
     const {
       titulo, descripcion, tipo, actividad,
       area, grado, fechaEntrega,
-      estudiantesIds,  // array de IDs seleccionados
-      asignarGrado     // opcional: asignar a todo el grado
+      estudiantesIds,
+      asignarGrado
     } = req.body;
 
     if (!titulo) return res.status(400).json({ mensaje: "El título es requerido" });
 
-    // Determinar qué estudiantes asignar
     let idsFinales = estudiantesIds || [];
 
     if (asignarGrado && asignarGrado !== "manual") {
-      // Asignar a todo el grado de la institución
       const estGrado = await prisma.student.findMany({
         where: {
-          institutionId: req.institutionId, // ← SOLO MI INSTITUCIÓN
+          institutionId: req.institutionId,
           grade: { in: [asignarGrado, asignarGrado.replace("°",""), asignarGrado + "°"] }
         },
         select: { id: true }
       });
       const idsGrado = estGrado.map(e => e.id);
-      // Combinar sin duplicados
       idsFinales = [...new Set([...idsFinales, ...idsGrado])];
     }
 
-    // Crear tarea
     const tarea = await prisma.task.create({
       data: {
-        title: titulo,
-        description: descripcion || "",
-        type: tipo?.toUpperCase() || "TALLER",
-        area: area || "",
-        grade: grado || asignarGrado || "",
-        dueDate: fechaEntrega ? new Date(fechaEntrega) : null,
-        activity: actividad || null,
-        userId: req.user.id,
+        title:        titulo,
+        description:  descripcion || "",
+        type:         tipo || "taller",
+        area:         area || "",
+        grade:        grado || asignarGrado || "",
+        dueDate:      fechaEntrega ? new Date(fechaEntrega) : null,
+        activity:     actividad || null,
+        userId:       req.user.id,
         institutionId: req.institutionId,
-        // Crear asignaciones para cada estudiante
         assignments: {
           create: idsFinales.map(studentId => ({ studentId, status: "PENDING" }))
         }
@@ -70,6 +65,32 @@ router.post("/", authDocente, async (req, res) => {
 });
 
 // ======================================================
+//  EDITAR TAREA
+//  PUT /tasks/:id
+// ======================================================
+router.put("/:id", authDocente, async (req, res) => {
+  try {
+    const { titulo, descripcion, tipo, actividad, area, fechaEntrega } = req.body;
+
+    const tarea = await prisma.task.update({
+      where: { id: req.params.id, userId: req.user.id },
+      data: {
+        title:       titulo,
+        description: descripcion || "",
+        type:        tipo || "taller",
+        area:        area || "",
+        dueDate:     fechaEntrega ? new Date(fechaEntrega) : null,
+        activity:    actividad || null,
+      }
+    });
+
+    res.json({ ok: true, tarea });
+  } catch (e) {
+    res.status(500).json({ mensaje: e.message });
+  }
+});
+
+// ======================================================
 //  MIS TAREAS (DOCENTE)
 //  GET /tasks/mis-tareas
 // ======================================================
@@ -79,12 +100,8 @@ router.get("/mis-tareas", authDocente, async (req, res) => {
       where: { userId: req.user.id },
       orderBy: { createdAt: "desc" },
       include: {
-        _count: {
-          select: { assignments: true }
-        },
-        assignments: {
-          select: { status: true }
-        }
+        _count: { select: { assignments: true } },
+        assignments: { select: { status: true } }
       }
     });
 
@@ -124,21 +141,22 @@ router.get("/:id/entregas", authDocente, async (req, res) => {
     });
 
     const listado = assignments.map(a => ({
-      estudianteId:     a.studentId,
-      nombreEstudiante: a.student.name,
-      grado:            a.student.grade,
-      entregada:        a.status !== "PENDING",
-      entregaId:        a.id,
-      entregadoEn:      a.submittedAt,
-      calificacion:     a.grade,
-      comentario:       a.comment,
-      resumenRespuesta: a.response?.substring(0, 120) || "",
-      tieneArchivo:     !!a.fileName,
-      archivoNombre:    a.fileName,
-      autoCalificada:   a.autoGraded,
-      porcentajeAuto:   a.detail?.porcentaje || null,
-      estado:           a.status === "GRADED" ? "calificado" :
-                        a.status === "SUBMITTED" ? "entregado" : "pendiente"
+      estudianteId:          a.studentId,
+      nombreEstudiante:      a.student.name,
+      grado:                 a.student.grade,
+      entregada:             a.status !== "PENDING",
+      entregaId:             a.id,
+      entregadoEn:           a.submittedAt,
+      calificacion:          a.grade,
+      comentario:            a.comment,
+      resumenRespuesta:      a.response?.substring(0, 120) || "",
+      respuestasActividad:   a.responses || {},
+      tieneArchivo:          !!a.fileName,
+      archivoNombre:         a.fileName,
+      autoCalificada:        a.autoGraded,
+      porcentajeAuto:        a.detail?.porcentaje || null,
+      estado:                a.status === "GRADED"     ? "calificado" :
+                             a.status === "SUBMITTED"  ? "entregado"  : "pendiente"
     }));
 
     res.json({
@@ -178,7 +196,7 @@ router.post("/calificar", authDocente, async (req, res) => {
 });
 
 // ======================================================
-//  MIS TAREAS (ESTUDIANTE) — sin código, solo con JWT
+//  MIS TAREAS (ESTUDIANTE)
 //  GET /tasks/mis-tareas-estudiante
 // ======================================================
 router.get("/mis-tareas-estudiante", authEstudiante, async (req, res) => {
@@ -227,7 +245,6 @@ router.post("/entregar", authEstudiante, async (req, res) => {
   try {
     const { tareaId, respuesta, respuestasActividad } = req.body;
 
-    // Verificar que tiene asignación
     const assignment = await prisma.assignment.findFirst({
       where: { taskId: tareaId, studentId: req.student.id },
       include: { task: true }
@@ -237,14 +254,12 @@ router.post("/entregar", authEstudiante, async (req, res) => {
     if (assignment.status !== "PENDING" && assignment.status !== "SUBMITTED")
       return res.status(400).json({ mensaje: "Esta tarea ya fue entregada" });
 
-    // Verificar fecha
     if (assignment.task.dueDate && new Date(assignment.task.dueDate) < new Date())
       return res.status(400).json({ mensaje: "⏰ La fecha de entrega ya venció" });
 
-    // Auto-calificación para quiz, completar, verdadero_falso
     let grade = null, autoGraded = false, detail = null;
     const respAct = respuestasActividad || {};
-    const tipo = assignment.task.type;
+    const tipo = assignment.task.type?.toUpperCase();
 
     if (["QUIZ","COMPLETAR","VERDADERO_FALSO"].includes(tipo) &&
         assignment.task.activity?.preguntas) {
@@ -258,8 +273,10 @@ router.post("/entregar", authEstudiante, async (req, res) => {
         const respEst = (respAct[i] || "").toString().trim().toLowerCase();
         const ok = respEst === corrRef || (tipo === "COMPLETAR" && respEst.includes(corrRef));
         if (ok) correctas++;
-        detalles.push({ pregunta: p.pregunta||p.enunciado||p.afirmacion,
-          respEst: respAct[i]||"", respCorrecta: p.correcta||p.respuesta, esCorrecta: ok });
+        detalles.push({
+          pregunta: p.pregunta||p.enunciado||p.afirmacion,
+          respEst: respAct[i]||"", respCorrecta: p.correcta||p.respuesta, esCorrecta: ok
+        });
       });
       if (total > 0) {
         grade = parseFloat((correctas / total * 5).toFixed(1));
@@ -268,17 +285,17 @@ router.post("/entregar", authEstudiante, async (req, res) => {
       }
     }
 
-    const updated = await prisma.assignment.update({
+    await prisma.assignment.update({
       where: { id: assignment.id },
       data: {
         response:    respuesta || "",
         responses:   respAct,
-        status:      "SUBMITTED",
+        status:      autoGraded ? "GRADED" : "SUBMITTED",
         submittedAt: new Date(),
         grade:       grade,
         autoGraded:  autoGraded,
         detail:      detail,
-        ...(autoGraded ? { status: "GRADED", gradedAt: new Date() } : {})
+        ...(autoGraded ? { gradedAt: new Date() } : {})
       }
     });
 
