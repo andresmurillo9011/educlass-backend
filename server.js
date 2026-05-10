@@ -901,7 +901,40 @@ app.post("/exportar-pdf", async (req, res) => {
     res.setHeader("Content-Type","application/pdf");res.setHeader("Content-Disposition",`attachment; filename="${encodeURIComponent(nombre)}"`);res.send(pdfBuffer);
   } catch(e){console.error("❌ PDF:",e.message);res.status(500).json({mensaje:e.message});}
 });
-
+// ======================================================
+//  RUTAS DE HORARIOS
+// ======================================================
+app.get("/horario-docente/:userId", (req, res) => {
+  try {
+    const db = leerDB();
+    if (!db.horarios) db.horarios = {};
+    const horario = db.horarios[req.params.userId] || {};
+    res.json({ ok: true, horario, userId: req.params.userId });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+app.put("/horario-docente/:userId", (req, res) => {
+  try {
+    const { horario } = req.body;
+    if (!horario || typeof horario !== "object")
+      return res.status(400).json({ mensaje: "Horario invalido" });
+    const db = leerDB();
+    if (!db.horarios) db.horarios = {};
+    db.horarios[req.params.userId] = horario;
+    guardarDB(db);
+    res.json({ ok: true, mensaje: "Horario guardado" });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+app.get("/todos-docentes-horarios", (req, res) => {
+  try {
+    const db = leerDB();
+    if (!db.horarios) db.horarios = {};
+    const docentes = (db.usuarios || []).map(u => {
+      const { password: _, ...pub } = u;
+      return { ...pub, horario: db.horarios[u.id] || {} };
+    });
+    res.json({ ok: true, docentes });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
 // ======================================================
 //  INICIAR SERVIDOR
 // ======================================================
