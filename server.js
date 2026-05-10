@@ -935,6 +935,56 @@ app.get("/todos-docentes-horarios", (req, res) => {
     res.json({ ok: true, docentes });
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
+
+// ======================================================
+//  ASIGNACIONES DE DOCENTES (materias/grados por docente)
+// ======================================================
+
+// GET: obtener asignaciones de un docente
+app.get("/asignaciones/:userId", (req, res) => {
+  try {
+    const db = leerDB();
+    if (!db.asignaciones) db.asignaciones = {};
+    res.json({ ok: true, asignaciones: db.asignaciones[req.params.userId] || [] });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// PUT: guardar asignaciones de un docente
+app.put("/asignaciones/:userId", (req, res) => {
+  try {
+    const { asignaciones } = req.body;
+    if (!Array.isArray(asignaciones)) return res.status(400).json({ mensaje: "Asignaciones inválidas" });
+    const db = leerDB();
+    if (!db.asignaciones) db.asignaciones = {};
+    db.asignaciones[req.params.userId] = asignaciones;
+    // También actualizar en el usuario si existe
+    const idx = db.usuarios.findIndex(u => u.id === req.params.userId);
+    if (idx >= 0) {
+      db.usuarios[idx].asignaciones = asignaciones;
+      db.usuarios[idx].grados   = [...new Set(asignaciones.map(a => a.grado))];
+      db.usuarios[idx].materias = [...new Set(asignaciones.map(a => a.area))];
+    }
+    guardarDB(db);
+    res.json({ ok: true, mensaje: "Asignaciones guardadas" });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// GET: todos los docentes con sus asignaciones (para panel-horarios)
+app.get("/todos-docentes-asignaciones", (req, res) => {
+  try {
+    const db = leerDB();
+    if (!db.asignaciones) db.asignaciones = {};
+    const docentes = (db.usuarios || []).map(u => {
+      const { password: _, ...pub } = u;
+      return { ...pub, asignaciones: db.asignaciones[u.id] || u.asignaciones || [] };
+    });
+    res.json({ ok: true, docentes });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// POST: login docente con asignaciones incluidas
+// (parche para /auth/login — devolver asignaciones en el objeto usuario)
+
 // ======================================================
 //  INICIAR SERVIDOR
 // ======================================================
