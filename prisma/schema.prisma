@@ -21,7 +21,6 @@ model Institution {
   users     User[]
   students  Student[]
   tasks     Task[]
-  mallas    Malla[]
   @@map("institutions")
 }
 
@@ -33,12 +32,10 @@ model User {
   cargo         String      @default("Docente")
   logoPath      String?
   banderaPath   String?
-  asignaciones  String?     // JSON: [{grado, area}]
   institutionId String
   institution   Institution @relation(fields: [institutionId], references: [id])
   classes       Class[]
   tasks         Task[]
-  mallas        Malla[]
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
   @@map("users")
@@ -107,19 +104,27 @@ model Assignment {
   @@map("assignments")
 }
 
-model Malla {
+model Diario {
   id            String      @id @default(uuid())
-  area          String
-  p1            String?     @default("")
-  p2            String?     @default("")
-  p3            String?     @default("")
-  p4            String?     @default("")
+  key           String
+  data          String      @default("{}")
   institutionId String
   institution   Institution @relation(fields: [institutionId], references: [id])
   userId        String?
-  user          User?       @relation(fields: [userId], references: [id])
   updatedAt     DateTime    @updatedAt
   createdAt     DateTime    @default(now())
-  @@unique([institutionId, area])
-  @@map("mallas")
+  @@unique([institutionId, key])
+  @@map("diarios")
+}
+
+model NotaClase {
+  id            String      @id @default(uuid())
+  key           String
+  data          String      @default("{}")
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+  updatedAt     DateTime    @updatedAt
+  createdAt     DateTime    @default(now())
+  @@unique([institutionId, key])
+  @@map("notas_clase")
 }
