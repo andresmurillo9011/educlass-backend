@@ -535,6 +535,82 @@ app.post("/exportar-word", authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ mensaje: e.message }); }
 });
 
+
+// ══════════════════════════════════════════════════════
+//  ASIGNACIONES DE DOCENTES
+// ══════════════════════════════════════════════════════
+
+// GET: asignaciones de un docente
+app.get("/asignaciones/:userId", async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.params.userId } });
+    if (!user) return res.json({ ok: true, asignaciones: [] });
+    const asignaciones = user.asignaciones ? JSON.parse(user.asignaciones) : [];
+    res.json({ ok: true, asignaciones });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// PUT: guardar asignaciones de un docente
+app.put("/asignaciones/:userId", async (req, res) => {
+  try {
+    const { asignaciones } = req.body;
+    if (!Array.isArray(asignaciones)) return res.status(400).json({ mensaje: "Inválido" });
+    await prisma.user.update({
+      where: { id: req.params.userId },
+      data: { asignaciones: JSON.stringify(asignaciones) }
+    });
+    res.json({ ok: true, mensaje: "Asignaciones guardadas" });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// GET: todos los docentes con asignaciones
+app.get("/todos-docentes-asignaciones", async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({ select: { id:true, name:true, email:true, cargo:true, asignaciones:true } });
+    const docentes = users.map(u => ({
+      ...u,
+      asignaciones: u.asignaciones ? JSON.parse(u.asignaciones) : []
+    }));
+    res.json({ ok: true, docentes });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+//  MALLAS CURRICULARES
+// ══════════════════════════════════════════════════════
+
+// GET: malla de una institución/área
+app.get("/mallas/:institutionId/:area", async (req, res) => {
+  try {
+    const malla = await prisma.malla.findUnique({
+      where: { institutionId_area: { institutionId: req.params.institutionId, area: decodeURIComponent(req.params.area) } }
+    });
+    res.json({ ok: true, malla: malla || null });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// PUT: guardar malla
+app.put("/mallas/:institutionId/:area", async (req, res) => {
+  try {
+    const { p1, p2, p3, p4 } = req.body;
+    const area = decodeURIComponent(req.params.area);
+    const malla = await prisma.malla.upsert({
+      where: { institutionId_area: { institutionId: req.params.institutionId, area } },
+      update: { p1: p1||"", p2: p2||"", p3: p3||"", p4: p4||"", updatedAt: new Date() },
+      create: { institutionId: req.params.institutionId, area, p1: p1||"", p2: p2||"", p3: p3||"", p4: p4||"" }
+    });
+    res.json({ ok: true, malla });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// GET: todas las mallas de una institución
+app.get("/mallas/:institutionId", async (req, res) => {
+  try {
+    const mallas = await prisma.malla.findMany({ where: { institutionId: req.params.institutionId } });
+    res.json({ ok: true, mallas });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
 // ── INICIAR ───────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
