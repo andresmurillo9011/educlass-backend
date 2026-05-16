@@ -344,22 +344,50 @@ app.delete("/tasks/:id", authMiddleware, async (req, res) => {
 // ── TAREAS ESTUDIANTE ─────────────────────────────────
 app.get("/tasks/mis-tareas-estudiante", authEst, async (req, res) => {
   try {
+    const student = req.student;
+    const ahora = new Date();
+
+    // 1. Tareas asignadas directamente al estudiante (via Assignment)
     const assignments = await prisma.assignment.findMany({
-      where: { studentId: req.student.id },
+      where: { studentId: student.id },
       include: { task: true },
       orderBy: { createdAt: "desc" }
     });
-    const ahora = new Date();
-    res.json({
-      tareas: assignments.map(a => ({
-        id: a.task.id, titulo: a.task.title, descripcion: a.task.description,
-        tipo: a.task.type, area: a.task.area, grado: a.task.grade,
-        fechaEntrega: a.task.dueDate, actividad: a.task.activity,
-        entregada: a.status !== "pending",
-        vencida: a.task.dueDate && new Date(a.task.dueDate) < ahora && a.status === "pending",
-        calificacion: a.grade, comentario: a.comment || "", entregaId: a.id
-      }))
+    const tareasAsignadas = assignments.map(a => ({
+      id: a.task.id, titulo: a.task.title, descripcion: a.task.description,
+      tipo: a.task.type, area: a.task.area, grado: a.task.grade,
+      fechaEntrega: a.task.dueDate, actividad: a.task.activity,
+      entregada: a.status !== "pending",
+      vencida: a.task.dueDate && new Date(a.task.dueDate) < ahora && a.status === "pending",
+      calificacion: a.grade, comentario: a.comment || "", entregaId: a.id
+    }));
+
+    // 2. Tareas por grado de la institución (sin assignment directo)
+    const tareasGrado = await prisma.task.findMany({
+      where: {
+        institutionId: student.institutionId,
+        grade: student.grade,
+        status: "active"
+      },
+      orderBy: { createdAt: "desc" }
     });
+
+    // Combinar evitando duplicados
+    const idsAsignadas = new Set(tareasAsignadas.map(t => t.id));
+    const tareasGradoExtra = tareasGrado
+      .filter(t => !idsAsignadas.has(t.id))
+      .map(t => {
+        return {
+          id: t.id, titulo: t.title, descripcion: t.description,
+          tipo: t.type, area: t.area, grado: t.grade,
+          fechaEntrega: t.dueDate, actividad: t.activity,
+          entregada: false,
+          vencida: t.dueDate && new Date(t.dueDate) < ahora,
+          calificacion: null, comentario: "", entregaId: null
+        };
+      });
+
+    res.json({ tareas: [...tareasAsignadas, ...tareasGradoExtra] });
   } catch (e) { res.status(500).json({ mensaje: e.message }); }
 });
 
@@ -608,146 +636,6 @@ app.get("/mallas/:institutionId", async (req, res) => {
   try {
     const mallas = await prisma.malla.findMany({ where: { institutionId: req.params.institutionId } });
     res.json({ ok: true, mallas });
-  } catch(e) { res.status(500).json({ mensaje: e.message }); }
-});
-
-
-// ══════════════════════════════════════════════════════
-//  ESTUDIANTES POR GRADO (para EduPanel)
-// ══════════════════════════════════════════════════════
-
-// GET: estudiantes de un grado en una institución
-app.get("/edupanel/estudiantes/:institutionId/:grado", async (req, res) => {
-  try {
-    const ests = await prisma.student.findMany({
-      where: { institutionId: req.params.institutionId, grade: req.params.grado },
-      orderBy: { name: "asc" }
-    });
-    const lista = ests.map((e, i) => ({ id: e.id, nombre: e.name, numero: i+1, grado: e.grade, activo: true }));
-    res.json({ ok: true, estudiantes: lista });
-  } catch(e) { res.status(500).json({ mensaje: e.message }); }
-});
-
-// POST: agregar estudiante a un grado
-app.post("/edupanel/estudiantes/:institutionId/:grado", async (req, res) => {
-  try {
-    const { nombre, numero } = req.body;
-    if (!nombre) return res.status(400).json({ mensaje: "Nombre requerido" });
-    // Crear usuario estudiante sin password (acceso solo por lista)
-    const username = nombre.toLowerCase().replace(/\s+/g, ".").replace(/[^a-z0-9.]/g, "") + "_" + Date.now();
-    const est = await prisma.student.create({
-      data: {
-        name: nombre.trim(),
-        username,
-        password: "",
-        grade: req.params.grado,
-        institutionId: req.params.institutionId
-      }
-    });
-    res.json({ ok: true, estudiante: { id: est.id, nombre: est.name, numero: numero||1, grado: est.grade } });
-  } catch(e) { res.status(500).json({ mensaje: e.message }); }
-});
-
-// PUT: actualizar nombre de estudiante
-app.put("/edupanel/estudiantes/:estId", async (req, res) => {
-  try {
-    const { nombre } = req.body;
-    await prisma.student.update({ where: { id: req.params.estId }, data: { name: nombre } });
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ mensaje: e.message }); }
-});
-
-// DELETE: eliminar estudiante
-app.delete("/edupanel/estudiantes/:estId", async (req, res) => {
-  try {
-    await prisma.student.delete({ where: { id: req.params.estId } });
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ mensaje: e.message }); }
-});
-
-// ══════════════════════════════════════════════════════
-//  DIARIO DE CLASE (para EduPanel)
-// ══════════════════════════════════════════════════════
-
-// GET: diario de una clase
-app.get("/edupanel/diario/:institutionId/:dia/:grado/:hora/:materia", async (req, res) => {
-  try {
-    const { institutionId, dia, grado, hora, materia } = req.params;
-    const key = `${dia}__${grado}__${decodeURIComponent(hora)}__${decodeURIComponent(materia)}`;
-    const diario = await prisma.diario.findUnique({ where: { institutionId_key: { institutionId, key } } });
-    if (!diario) return res.json({ ok: true, diario: null });
-    res.json({ ok: true, diario: { ...JSON.parse(diario.data || "{}"), id: diario.id } });
-  } catch(e) { res.status(500).json({ mensaje: e.message }); }
-});
-
-// PUT: guardar diario
-app.put("/edupanel/diario/:institutionId/:dia/:grado/:hora/:materia", async (req, res) => {
-  try {
-    const { institutionId, dia, grado, hora, materia } = req.params;
-    const key = `${dia}__${grado}__${decodeURIComponent(hora)}__${decodeURIComponent(materia)}`;
-    const data = { ...req.body, updatedAt: new Date().toISOString() };
-    await prisma.diario.upsert({
-      where: { institutionId_key: { institutionId, key } },
-      update: { data: JSON.stringify(data), userId: req.body.userId || null },
-      create: { institutionId, key, data: JSON.stringify(data), userId: req.body.userId || null }
-    });
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ mensaje: e.message }); }
-});
-
-// GET: todos los diarios de una institución
-app.get("/edupanel/diarios/:institutionId", async (req, res) => {
-  try {
-    const diarios = await prisma.diario.findMany({ where: { institutionId: req.params.institutionId } });
-    const lista = diarios.map(d => ({ ...JSON.parse(d.data || "{}"), id: d.id, key: d.key }));
-    res.json({ ok: true, diarios: lista });
-  } catch(e) { res.status(500).json({ mensaje: e.message }); }
-});
-
-// ══════════════════════════════════════════════════════
-//  NOTAS (para EduPanel)
-// ══════════════════════════════════════════════════════
-
-// GET: nota de un estudiante en una clase
-app.get("/edupanel/nota/:institutionId/:dia/:grado/:hora/:materia/:estId", async (req, res) => {
-  try {
-    const { institutionId, dia, grado, hora, materia, estId } = req.params;
-    const key = `${dia}__${grado}__${decodeURIComponent(hora)}__${decodeURIComponent(materia)}__${estId}`;
-    const nota = await prisma.notaClase.findUnique({ where: { institutionId_key: { institutionId, key } } });
-    if (!nota) return res.json({ ok: true, nota: { nota: "", estado: "normal", observacion: "" } });
-    res.json({ ok: true, nota: JSON.parse(nota.data || "{}") });
-  } catch(e) { res.status(500).json({ mensaje: e.message }); }
-});
-
-// PUT: guardar nota
-app.put("/edupanel/nota/:institutionId/:dia/:grado/:hora/:materia/:estId", async (req, res) => {
-  try {
-    const { institutionId, dia, grado, hora, materia, estId } = req.params;
-    const key = `${dia}__${grado}__${decodeURIComponent(hora)}__${decodeURIComponent(materia)}__${estId}`;
-    const data = { ...req.body, updatedAt: new Date().toISOString() };
-    await prisma.notaClase.upsert({
-      where: { institutionId_key: { institutionId, key } },
-      update: { data: JSON.stringify(data) },
-      create: { institutionId, key, data: JSON.stringify(data) }
-    });
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ mensaje: e.message }); }
-});
-
-// GET: todas las notas de una clase
-app.get("/edupanel/notas/:institutionId/:dia/:grado/:hora/:materia", async (req, res) => {
-  try {
-    const { institutionId, dia, grado, hora, materia } = req.params;
-    const prefix = `${dia}__${grado}__${decodeURIComponent(hora)}__${decodeURIComponent(materia)}__`;
-    const notas = await prisma.notaClase.findMany({
-      where: { institutionId, key: { startsWith: prefix } }
-    });
-    const map = {};
-    notas.forEach(n => {
-      const estId = n.key.split("__").pop();
-      map[estId] = JSON.parse(n.data || "{}");
-    });
-    res.json({ ok: true, notas: map });
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
 
