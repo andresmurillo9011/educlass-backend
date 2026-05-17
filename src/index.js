@@ -367,7 +367,7 @@ app.get("/tasks/mis-tareas-estudiante", authEst, async (req, res) => {
       where: {
         institutionId: student.institutionId,
         grade: student.grade,
-        status: "active"
+
       },
       orderBy: { createdAt: "desc" }
     });
