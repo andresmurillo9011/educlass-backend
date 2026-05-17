@@ -21,7 +21,6 @@ model Institution {
   users     User[]
   students  Student[]
   tasks     Task[]
-  mallas    Malla[]
   diarios   Diario[]
   notas     NotaClase[]
   @@map("institutions")
