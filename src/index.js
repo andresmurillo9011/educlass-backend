@@ -179,8 +179,9 @@ app.post("/auth/registro-estudiante", async (req, res) => {
 
 app.post("/auth/login-estudiante", async (req, res) => {
   try {
-    const { usuario, password } = req.body;
-    const student = await prisma.student.findUnique({ where: { username: usuario }, include: { institution: true } });
+    const { usuario, username, password } = req.body;
+    const user = usuario || username;
+    const student = await prisma.student.findUnique({ where: { username: user }, include: { institution: true } });
     if (!student) return res.status(401).json({ mensaje: "Usuario no encontrado" });
     if (!await bcrypt.compare(password || "", student.password)) return res.status(401).json({ mensaje: "Contraseña incorrecta" });
     const { password: _, ...pub } = student;
@@ -224,6 +225,24 @@ app.get("/students/grados", authMiddleware, async (req, res) => {
       distinct: ["grade"]
     });
     res.json({ grados: result.map(r => r.grade).filter(Boolean).sort() });
+  } catch (e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// ── RESET CONTRASEÑAS ESTUDIANTES ─────────────────────
+// POST /students/reset-passwords — resetea todas las contraseñas al username
+app.post("/students/reset-passwords", authMiddleware, async (req, res) => {
+  try {
+    const students = await prisma.student.findMany({
+      where: { institutionId: req.user.institutionId },
+      select: { id: true, username: true }
+    });
+    let count = 0;
+    for (const s of students) {
+      const hash = await bcrypt.hash(s.username, 10);
+      await prisma.student.update({ where: { id: s.id }, data: { password: hash } });
+      count++;
+    }
+    res.json({ ok: true, mensaje: `✅ ${count} contraseñas reseteadas. Ahora cada estudiante usa su username como contraseña.` });
   } catch (e) { res.status(500).json({ mensaje: e.message }); }
 });
 
@@ -318,8 +337,6 @@ app.get("/tasks/:id/entregas", authMiddleware, async (req, res) => {
       entregada: a.status !== "pending", entregaId: a.id, entregadoEn: a.submittedAt,
       calificacion: a.grade, comentario: a.comment || "",
       resumenRespuesta: a.response?.substring(0, 120) || "",
-      respuestaCompleta: a.response || "",
-      respuestasActividad: (()=>{ try{ return JSON.parse(a.responses||"{}"); }catch(e){ return {}; } })(),
       tieneArchivo: !!a.fileName, archivoNombre: a.fileName,
       autoCalificada: a.autoGraded, porcentajeAuto: a.detail?.porcentaje || null,
       estado: a.status === "graded" ? "calificado" : a.status === "submitted" ? "entregado" : "pendiente"
