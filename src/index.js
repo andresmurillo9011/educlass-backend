@@ -394,8 +394,12 @@ app.get("/tasks/mis-tareas-estudiante", authEst, async (req, res) => {
 app.post("/tasks/entregar", authEst, uploadEnt.single("archivo"), async (req, res) => {
   try {
     const { tareaId, respuesta, respuestasActividad } = req.body;
-    const assignment = await prisma.assignment.findFirst({ where: { taskId: tareaId, studentId: req.student.id }, include: { task: true } });
-    if (!assignment) return res.status(404).json({ mensaje: "No tienes esta tarea asignada" });
+    let assignment = await prisma.assignment.findFirst({ where: { taskId: tareaId, studentId: req.student.id }, include: { task: true } });
+    if (!assignment) {
+      const tareaExiste = await prisma.task.findFirst({ where: { id: tareaId, institutionId: req.student.institutionId } });
+      if (!tareaExiste) return res.status(404).json({ mensaje: "Tarea no encontrada" });
+      assignment = await prisma.assignment.create({ data: { taskId: tareaId, studentId: req.student.id, status: "pending" }, include: { task: true } });
+    }
 
     const respAct = respuestasActividad ? JSON.parse(respuestasActividad) : {};
     let grade = null, autoGraded = false, detail = null;
