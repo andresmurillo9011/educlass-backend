@@ -337,6 +337,8 @@ app.get("/tasks/:id/entregas", authMiddleware, async (req, res) => {
       entregada: a.status !== "pending", entregaId: a.id, entregadoEn: a.submittedAt,
       calificacion: a.grade, comentario: a.comment || "",
       resumenRespuesta: a.response?.substring(0, 120) || "",
+      respuestaCompleta: a.response || "",
+      respuestasActividad: (()=>{ try{ return JSON.parse(a.responses||"{}"); }catch(e){ return {}; } })(),
       tieneArchivo: !!a.fileName, archivoNombre: a.fileName,
       autoCalificada: a.autoGraded, porcentajeAuto: a.detail?.porcentaje || null,
       estado: a.status === "graded" ? "calificado" : a.status === "submitted" ? "entregado" : "pendiente"
