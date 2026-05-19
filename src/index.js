@@ -621,6 +621,14 @@ app.put("/asignaciones/:userId", async (req, res) => {
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
 
+// DELETE: eliminar docente
+app.delete("/docentes/:id", authMiddleware, async (req, res) => {
+  try {
+    await prisma.user.delete({ where: { id: req.params.id } });
+    res.json({ ok: true, mensaje: "Docente eliminado ✅" });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
 // GET: todos los docentes con asignaciones
 app.get("/todos-docentes-asignaciones", async (req, res) => {
   try {
