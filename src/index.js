@@ -596,13 +596,12 @@ app.post("/exportar-word", authMiddleware, async (req, res) => {
 // GET: asignaciones de un docente
 app.get("/asignaciones/:userId", async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({ where: { id: req.params.userId }, select: { id: true } });
+    const user = await prisma.user.findUnique({ where: { id: req.params.userId }, select: { id: true, institutionId: true } });
     if (!user) return res.json({ ok: true, asignaciones: [] });
-    // Leer asignaciones del diario si existen
-    const diario = await prisma.diario.findUnique({ 
-      where: { institutionId_key: { institutionId: req.params.userId, key: "asignaciones_horario" } }
+    const nota = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: user.institutionId, key: `asig_${req.params.userId}` } }
     }).catch(() => null);
-    const asignaciones = diario ? JSON.parse(diario.data || "[]") : [];
+    const asignaciones = nota ? JSON.parse(nota.data || "[]") : [];
     res.json({ ok: true, asignaciones });
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
@@ -612,10 +611,12 @@ app.put("/asignaciones/:userId", async (req, res) => {
   try {
     const { asignaciones } = req.body;
     if (!Array.isArray(asignaciones)) return res.status(400).json({ mensaje: "Inválido" });
-    await prisma.diario.upsert({
-      where: { institutionId_key: { institutionId: req.params.userId, key: "asignaciones_horario" } },
+    const user = await prisma.user.findUnique({ where: { id: req.params.userId }, select: { institutionId: true } });
+    if (!user) return res.status(404).json({ mensaje: "Docente no encontrado" });
+    await prisma.notaClase.upsert({
+      where: { institutionId_key: { institutionId: user.institutionId, key: `asig_${req.params.userId}` } },
       update: { data: JSON.stringify(asignaciones), updatedAt: new Date() },
-      create: { institutionId: req.params.userId, key: "asignaciones_horario", data: JSON.stringify(asignaciones), userId: req.params.userId }
+      create: { institutionId: user.institutionId, key: `asig_${req.params.userId}`, data: JSON.stringify(asignaciones) }
     });
     res.json({ ok: true, mensaje: "Asignaciones guardadas" });
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
