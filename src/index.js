@@ -596,9 +596,13 @@ app.post("/exportar-word", authMiddleware, async (req, res) => {
 // GET: asignaciones de un docente
 app.get("/asignaciones/:userId", async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({ where: { id: req.params.userId } });
+    const user = await prisma.user.findUnique({ where: { id: req.params.userId }, select: { id: true } });
     if (!user) return res.json({ ok: true, asignaciones: [] });
-    const asignaciones = user.asignaciones ? JSON.parse(user.asignaciones) : [];
+    // Leer asignaciones del diario si existen
+    const diario = await prisma.diario.findUnique({ 
+      where: { institutionId_key: { institutionId: req.params.userId, key: "asignaciones_horario" } }
+    }).catch(() => null);
+    const asignaciones = diario ? JSON.parse(diario.data || "[]") : [];
     res.json({ ok: true, asignaciones });
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
@@ -608,9 +612,10 @@ app.put("/asignaciones/:userId", async (req, res) => {
   try {
     const { asignaciones } = req.body;
     if (!Array.isArray(asignaciones)) return res.status(400).json({ mensaje: "Inválido" });
-    await prisma.user.update({
-      where: { id: req.params.userId },
-      data: { asignaciones: JSON.stringify(asignaciones) }
+    await prisma.diario.upsert({
+      where: { institutionId_key: { institutionId: req.params.userId, key: "asignaciones_horario" } },
+      update: { data: JSON.stringify(asignaciones), updatedAt: new Date() },
+      create: { institutionId: req.params.userId, key: "asignaciones_horario", data: JSON.stringify(asignaciones), userId: req.params.userId }
     });
     res.json({ ok: true, mensaje: "Asignaciones guardadas" });
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
@@ -619,11 +624,11 @@ app.put("/asignaciones/:userId", async (req, res) => {
 // GET: todos los docentes con asignaciones
 app.get("/todos-docentes-asignaciones", async (req, res) => {
   try {
-    const users = await prisma.user.findMany({ select: { id:true, name:true, email:true, cargo:true, asignaciones:true } });
-    const docentes = users.map(u => ({
-      ...u,
-      asignaciones: u.asignaciones ? JSON.parse(u.asignaciones) : []
-    }));
+    const users = await prisma.user.findMany({ 
+      where: { institutionId: req.institutionId || undefined },
+      select: { id:true, name:true, email:true, cargo:true } 
+    });
+    const docentes = users.map(u => ({ ...u, asignaciones: [] }));
     res.json({ ok: true, docentes });
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
