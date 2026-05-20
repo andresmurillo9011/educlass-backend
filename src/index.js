@@ -773,7 +773,7 @@ app.delete("/notas/periodos/:periodoId", authMiddleware, async (req, res) => {
 });
 
 // GET: notas de un estudiante (para portal estudiantil)
-app.get("/notas/estudiante/:studentId", authEstudiante, async (req, res) => {
+app.get("/notas/estudiante/:studentId", authEst, async (req, res) => {
   try {
     // Buscar todos los períodos de la institución que incluyan al estudiante
     const todasNotas = await prisma.notaClase.findMany({
