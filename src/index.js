@@ -690,6 +690,117 @@ app.get("/todos-docentes-asignaciones", async (req, res) => {
 // ══════════════════════════════════════════════════════
 
 // GET: malla de una institución/área
+// ══════════════════════════════════════════════════════
+// LIBRO DE NOTAS
+// ══════════════════════════════════════════════════════
+
+// GET: períodos de notas del docente
+app.get("/notas/periodos", authMiddleware, async (req, res) => {
+  try {
+    const nota = await prisma.notaClase.findMany({
+      where: { institutionId: req.institutionId, key: { startsWith: `periodos_${req.user.id}` } }
+    });
+    const periodos = nota.length ? JSON.parse(nota[0].data || "[]") : [];
+    res.json({ ok: true, periodos });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// POST: crear período de notas
+app.post("/notas/periodos", authMiddleware, async (req, res) => {
+  try {
+    const { nombre, area, grado, porcentaje, actividades } = req.body;
+    const key = `periodos_${req.user.id}_notas`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.institutionId, key } }
+    }).catch(() => null);
+    const periodos = existing ? JSON.parse(existing.data || "[]") : [];
+    const nuevo = {
+      id: Date.now().toString(),
+      nombre, area, grado,
+      porcentaje: parseFloat(porcentaje) || 100,
+      actividades: actividades || [],
+      notas: {},
+      creadoEn: new Date().toISOString(),
+      docenteId: req.user.id
+    };
+    periodos.push(nuevo);
+    await prisma.notaClase.upsert({
+      where: { institutionId_key: { institutionId: req.institutionId, key } },
+      update: { data: JSON.stringify(periodos), updatedAt: new Date() },
+      create: { institutionId: req.institutionId, key, data: JSON.stringify(periodos) }
+    });
+    res.json({ ok: true, periodo: nuevo });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// PUT: actualizar notas de un período
+app.put("/notas/periodos/:periodoId", authMiddleware, async (req, res) => {
+  try {
+    const { notas, actividades } = req.body;
+    const key = `periodos_${req.user.id}_notas`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.institutionId, key } }
+    }).catch(() => null);
+    if (!existing) return res.status(404).json({ mensaje: "No encontrado" });
+    const periodos = JSON.parse(existing.data || "[]");
+    const idx = periodos.findIndex(p => p.id === req.params.periodoId);
+    if (idx === -1) return res.status(404).json({ mensaje: "Período no encontrado" });
+    if (notas) periodos[idx].notas = notas;
+    if (actividades) periodos[idx].actividades = actividades;
+    await prisma.notaClase.update({
+      where: { institutionId_key: { institutionId: req.institutionId, key } },
+      data: { data: JSON.stringify(periodos), updatedAt: new Date() }
+    });
+    res.json({ ok: true, periodo: periodos[idx] });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// DELETE: eliminar período
+app.delete("/notas/periodos/:periodoId", authMiddleware, async (req, res) => {
+  try {
+    const key = `periodos_${req.user.id}_notas`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.institutionId, key } }
+    }).catch(() => null);
+    if (!existing) return res.json({ ok: true });
+    const periodos = JSON.parse(existing.data || "[]").filter(p => p.id !== req.params.periodoId);
+    await prisma.notaClase.update({
+      where: { institutionId_key: { institutionId: req.institutionId, key } },
+      data: { data: JSON.stringify(periodos), updatedAt: new Date() }
+    });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// GET: notas de un estudiante (para portal estudiantil)
+app.get("/notas/estudiante/:studentId", authEstudiante, async (req, res) => {
+  try {
+    // Buscar todos los períodos de la institución que incluyan al estudiante
+    const todasNotas = await prisma.notaClase.findMany({
+      where: { institutionId: req.student.institutionId, key: { contains: "_notas" } }
+    });
+    const misNotas = [];
+    todasNotas.forEach(n => {
+      const periodos = JSON.parse(n.data || "[]");
+      periodos.forEach(p => {
+        const notasEst = p.notas?.[req.student.id];
+        if (notasEst && Object.keys(notasEst).length > 0) {
+          misNotas.push({
+            periodoId: p.id,
+            nombre: p.nombre,
+            area: p.area,
+            grado: p.grado,
+            porcentaje: p.porcentaje,
+            actividades: p.actividades,
+            misNotas: notasEst
+          });
+        }
+      });
+    });
+    res.json({ ok: true, notas: misNotas });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
 app.get("/mallas/:institutionId/:area", async (req, res) => {
   try {
     const malla = await prisma.malla.findUnique({
