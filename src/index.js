@@ -630,6 +630,49 @@ app.delete("/docentes/:id", authMiddleware, async (req, res) => {
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
 
+// GET: horario completo de un docente
+app.get("/horarios/:userId", async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.params.userId }, select: { institutionId: true } });
+    if (!user) return res.json({ ok: true, horario: {} });
+    const nota = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: user.institutionId, key: `horario_${req.params.userId}` } }
+    }).catch(() => null);
+    const horario = nota ? JSON.parse(nota.data || "{}") : {};
+    res.json({ ok: true, horario });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// PUT: guardar horario completo de un docente
+app.put("/horarios/:userId", async (req, res) => {
+  try {
+    const { horario } = req.body;
+    if (!horario || typeof horario !== 'object') return res.status(400).json({ mensaje: "Inválido" });
+    const user = await prisma.user.findUnique({ where: { id: req.params.userId }, select: { institutionId: true } });
+    if (!user) return res.status(404).json({ mensaje: "Docente no encontrado" });
+    await prisma.notaClase.upsert({
+      where: { institutionId_key: { institutionId: user.institutionId, key: `horario_${req.params.userId}` } },
+      update: { data: JSON.stringify(horario), updatedAt: new Date() },
+      create: { institutionId: user.institutionId, key: `horario_${req.params.userId}`, data: JSON.stringify(horario) }
+    });
+    // También actualizar asignaciones automáticamente
+    const asignacionesMap = {};
+    Object.values(horario).forEach(v => {
+      if (v && v.materia && v.grado) {
+        const key = `${v.materia}_${v.grado}`;
+        if (!asignacionesMap[key]) asignacionesMap[key] = { area: v.materia, grado: v.grado };
+      }
+    });
+    const asignaciones = Object.values(asignacionesMap);
+    await prisma.notaClase.upsert({
+      where: { institutionId_key: { institutionId: user.institutionId, key: `asig_${req.params.userId}` } },
+      update: { data: JSON.stringify(asignaciones), updatedAt: new Date() },
+      create: { institutionId: user.institutionId, key: `asig_${req.params.userId}`, data: JSON.stringify(asignaciones) }
+    });
+    res.json({ ok: true, mensaje: "Horario guardado ✅" });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
 // GET: todos los docentes con asignaciones
 app.get("/todos-docentes-asignaciones", async (req, res) => {
   try {
