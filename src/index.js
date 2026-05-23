@@ -53,7 +53,6 @@ const authMiddleware = async (req, res, next) => {
     const user = await prisma.user.findUnique({ where: { id: decoded.id }, include: { institution: true } });
     if (!user) return res.status(401).json({ mensaje: "Usuario no encontrado" });
     req.user = user;
-    req.institutionId = user.institutionId;
     next();
   } catch { return res.status(401).json({ mensaje: "Token inválido" }); }
 };
@@ -834,6 +833,30 @@ app.get("/mallas/:institutionId", async (req, res) => {
 });
 
 // ── INICIAR ───────────────────────────────────────────
+// ── CRUD ESTUDIANTES (Panel Gestion) ─────────────────
+app.delete("/superadmin/students/:id", authMiddleware, async (req, res) => {
+  try {
+    await prisma.student.delete({ where: { id: req.params.id } });
+    res.json({ ok: true, mensaje: "Estudiante eliminado" });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+app.put("/superadmin/students/:id", authMiddleware, async (req, res) => {
+  try {
+    const { nombre, grado, password } = req.body;
+    const data = {};
+    if (nombre) data.name = nombre;
+    if (grado) data.grade = grado;
+    if (password) data.password = await require("bcryptjs").hash(password, 10);
+    const est = await prisma.student.update({
+      where: { id: req.params.id }, data
+    });
+    const { password: _, ...pub } = est;
+    res.json({ ok: true, estudiante: pub, mensaje: "Actualizado" });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
   console.log(`✅ EduClass v6 — Puerto ${PORT}`);
