@@ -53,6 +53,7 @@ const authMiddleware = async (req, res, next) => {
     const user = await prisma.user.findUnique({ where: { id: decoded.id }, include: { institution: true } });
     if (!user) return res.status(401).json({ mensaje: "Usuario no encontrado" });
     req.user = user;
+    req.institutionId = user.institutionId;
     next();
   } catch { return res.status(401).json({ mensaje: "Token inválido" }); }
 };
