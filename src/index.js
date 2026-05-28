@@ -283,7 +283,7 @@ app.delete("/clase/:id", authMiddleware, async (req, res) => {
 // ── TAREAS ────────────────────────────────────────────
 app.post("/tasks", authMiddleware, async (req, res) => {
   try {
-    const { titulo, descripcion, tipo, actividad, area, grado, fechaEntrega, asignarGrado, estudiantesIds } = req.body;
+    const { titulo, descripcion, tipo, actividad, area, grado, fechaEntrega, asignarGrado, estudiantesIds, materialRef } = req.body;
     if (!titulo) return res.status(400).json({ mensaje: "Título requerido" });
 
     let ids = Array.isArray(estudiantesIds) ? [...estudiantesIds] : [];
@@ -297,7 +297,7 @@ app.post("/tasks", authMiddleware, async (req, res) => {
 
     const tarea = await prisma.task.create({
       data: {
-        title: titulo, description: descripcion || "", type: tipo || "taller",
+        title: titulo, description: descripcion || "", materialRef: materialRef || "", type: tipo || "taller",
         area, grade: grado || asignarGrado || "", dueDate: fechaEntrega ? new Date(fechaEntrega) : null,
         activity: actividad ? JSON.stringify(actividad) : null, userId: req.user.id, institutionId: req.user.institutionId,
         assignments: { create: ids.map(studentId => ({ studentId, status: "pending" })) }
@@ -379,9 +379,12 @@ app.post("/tasks/auto-calificar/:entregaId", authMiddleware, async (req, res) =>
       const rawDada = (respEstudiante[i] || respEstudiante[String(i)] || "").toString().trim();
       const respDada = rawDada.toLowerCase().replace(/^([a-d])\..*$/i, "$1");
       const normC = respCorrecta === "true" ? "verdadero" : respCorrecta === "false" ? "falso" : respCorrecta;
-      const normD = respDada === "true" ? "verdadero" : respDada === "false" ? "falso" : respDada;
-      const ok = respDada === respCorrecta || normD === normC || rawDada.toLowerCase() === rawCorrecta.toLowerCase()
-        || rawDada.toLowerCase().includes(respCorrecta) || respCorrecta.includes(respDada);
+      const normD = respDada === "true" ? "verdadero" : respDada === "false" ? "falso" :
+                    rawDada.toLowerCase().startsWith("verdadero") ? "verdadero" :
+                    rawDada.toLowerCase().startsWith("falso") ? "falso" : respDada;
+      const dadaPalabras = rawDada.trim().split(/\s+/).length;
+      const okComp = dadaPalabras <= 5 && (rawDada.toLowerCase().includes(respCorrecta) || respCorrecta.includes(respDada));
+      const ok = respDada === respCorrecta || normD === normC || rawDada.toLowerCase() === rawCorrecta.toLowerCase() || okComp;
       if (ok) correctas++;
       return { pregunta: p.pregunta || p.enunciado || p.afirmacion || "", correcta: respCorrecta, dada: respDada, ok };
     });
@@ -395,7 +398,61 @@ app.post("/tasks/auto-calificar/:entregaId", authMiddleware, async (req, res) =>
               comment: `Auto-calificado: ${correctas}/${preguntas.length} correctas (${porcentaje}%)` }
     });
     
+    // Para preguntas sin respuesta_correcta clara, usar IA
+    const preguntasAbiertas = preguntas.filter(p => !p.correcta && !p.respuesta);
+    if (preguntasAbiertas.length > 0 && process.env.ANTHROPIC_API_KEY) {
+      // Solo notificar que hay preguntas abiertas sin calificar
+      return res.json({ ok: true, nota, correctas, total: preguntas.length, porcentaje, detalle, tieneAbiertas: true });
+    }
     res.json({ ok: true, nota, correctas, total: preguntas.length, porcentaje, detalle });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+
+// Calificar respuesta abierta con IA
+app.post("/tasks/calificar-ia/:entregaId", authMiddleware, async (req, res) => {
+  try {
+    const assignment = await prisma.assignment.findUnique({
+      where: { id: req.params.entregaId },
+      include: { task: true }
+    });
+    if (!assignment) return res.status(404).json({ mensaje: "Entrega no encontrada" });
+    
+    const respuesta = assignment.response || "";
+    const materialRef = assignment.task.materialRef || "";
+    const actObj = typeof assignment.task.activity === "string" 
+      ? JSON.parse(assignment.task.activity || "{}") 
+      : (assignment.task.activity || {});
+    const instrucciones = assignment.task.description || "";
+    
+    const prompt = `Eres un docente evaluando la respuesta de un estudiante de grado ${assignment.task.grade}° en ${assignment.task.area}.
+Tarea: "${assignment.task.title}"
+${instrucciones ? "Instrucciones: " + instrucciones : ""}
+${materialRef ? "Material de referencia: " + materialRef.substring(0, 600) : ""}
+
+Respuesta del estudiante: "${respuesta}"
+
+Evalúa la respuesta en escala de 0 a 5 (Colombia). Responde SOLO con JSON:
+{"nota": 3.5, "comentario": "Breve retroalimentación de máximo 2 oraciones", "correctas": 3, "total": 5}`;
+
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 200, messages: [{ role: "user", content: prompt }] })
+    });
+    const data = await r.json();
+    const text = data.content?.[0]?.text || "{}";
+    let resultado;
+    try { resultado = JSON.parse(text.replace(/```json|```/g, "").trim()); }
+    catch(e) { resultado = { nota: 2.5, comentario: "Evaluación manual requerida" }; }
+    
+    await prisma.assignment.update({
+      where: { id: req.params.entregaId },
+      data: { grade: resultado.nota, status: "graded", gradedAt: new Date(), autoGraded: true,
+              comment: resultado.comentario || "" }
+    });
+    
+    res.json({ ok: true, ...resultado });
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
 
@@ -487,9 +544,13 @@ app.post("/tasks/entregar", authEst, uploadEnt.single("archivo"), async (req, re
         const est = rawEst.toLowerCase().replace(/^([a-d])\..*$/i, "$1");
         // Normalizar Verdadero/Falso vs true/false
         const normRef = ref === "true" ? "verdadero" : ref === "false" ? "falso" : ref;
-        const normEst = est === "true" ? "verdadero" : est === "false" ? "falso" : est;
-        const ok = est === ref || normEst === normRef || rawEst.toLowerCase() === rawRef.toLowerCase() 
-          || (assignment.task.type === "completar" && (rawEst.toLowerCase().includes(ref) || ref.includes(est)));
+        const normEst = est === "true" ? "verdadero" : est === "false" ? "falso" : 
+                        rawEst.toLowerCase().startsWith("verdadero") ? "verdadero" :
+                        rawEst.toLowerCase().startsWith("falso") ? "falso" : est;
+        // Para completar: solo aceptar si la respuesta del estudiante es corta (<=5 palabras) y contiene la clave
+        const estPalabras = rawEst.trim().split(/\s+/).length;
+        const okCompletar = assignment.task.type === "completar" && estPalabras <= 5 && (rawEst.toLowerCase().includes(ref) || ref.includes(est));
+        const ok = est === ref || normEst === normRef || rawEst.toLowerCase() === rawRef.toLowerCase() || okCompletar;
         if (ok) correctas++;
         detalles.push({ pregunta: p.pregunta || p.enunciado || p.afirmacion, respEst: respAct[i] || "", respCorrecta: p.correcta || p.respuesta, esCorrecta: ok });
       });
@@ -568,8 +629,8 @@ app.post("/generar-actividad", authMiddleware, async (req, res) => {
     const n = cantidad || 5;
     const prompts = {
       quiz: `Genera ${n} preguntas selección múltiple sobre "${tema}" ${area} grado ${grado}° Colombia. JSON SOLO: {"preguntas":[{"pregunta":"","opciones":["A.","B.","C.","D."],"correcta":"A"}]}`,
-      completar: `Genera ${n} oraciones completar sobre "${tema}" ${area} grado ${grado}°. JSON SOLO: {"preguntas":[{"enunciado":"___","respuesta":""}]}`,
-      verdadero_falso: `Genera ${n} afirmaciones V/F sobre "${tema}" ${area} grado ${grado}°. JSON SOLO: {"preguntas":[{"afirmacion":"","respuesta":"Verdadero"}]}`,
+      completar: `Genera ${n} oraciones para completar sobre "${tema}" ${area} grado ${grado}°. SOLO JSON sin texto extra: {"preguntas":[{"enunciado":"La ___ es clave","respuesta":"palabra"}]}. La respuesta debe ser maxima 3 palabras clave.`,
+      verdadero_falso: `Genera ${n} afirmaciones sobre "${tema}" ${area} grado ${grado}°. Responde SOLO JSON sin texto extra: {"preguntas":[{"afirmacion":"","respuesta":"Verdadero"}]}. Usa SOLO "Verdadero" o "Falso" como valor de respuesta.`,
       relacionar: `Genera ${n} pares sobre "${tema}" ${area} grado ${grado}°. JSON SOLO: {"pares":[{"columnaA":"","columnaB":""}]}`,
       taller: `Genera ${n} preguntas abiertas sobre "${tema}" ${area} grado ${grado}°. JSON SOLO: {"preguntas":[{"pregunta":"","tipo":"abierta"}]}`,
       evaluacion: `Genera evaluación mixta sobre "${tema}" ${area} grado ${grado}°. JSON SOLO: {"preguntas":[{"tipo":"seleccion","pregunta":"","opciones":["A.","B.","C.","D."],"correcta":"A"}]}`,
