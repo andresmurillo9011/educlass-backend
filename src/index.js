@@ -146,7 +146,8 @@ app.post("/auth/login", async (req, res) => {
     const cargoLower = (user.cargo || "").toLowerCase();
     const esAdmin = cargoLower === "admin" || cargoLower === "superadmin";
     const token = jwt.sign({ id: user.id, role: esAdmin ? "admin" : "teacher", institutionId: user.institutionId }, JWT_SECRET, { expiresIn: "30d" });
-    res.json({ ok: true, usuario: { ...pub, role: esAdmin ? "admin" : "docente" }, token });
+    const asigs = user.asignaciones ? JSON.parse(user.asignaciones) : [];
+    res.json({ ok: true, usuario: { ...pub, role: esAdmin ? "admin" : "docente", asignaciones: asigs }, token });
   } catch (e) { res.status(500).json({ mensaje: e.message }); }
 });
 
@@ -212,10 +213,40 @@ app.get("/users", authMiddleware, async (req, res) => {
   try {
     const users = await prisma.user.findMany({
       where: { institutionId: req.user.institutionId },
-      select: { id: true, name: true, email: true, cargo: true, createdAt: true },
+      select: { id: true, name: true, email: true, cargo: true, asignaciones: true, createdAt: true },
       orderBy: { name: "asc" }
     });
-    res.json({ ok: true, usuarios: users });
+    const parsed = users.map(u => ({
+      ...u,
+      asignaciones: u.asignaciones ? JSON.parse(u.asignaciones) : []
+    }));
+    res.json({ ok: true, usuarios: parsed });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// PUT: actualizar asignaciones de un docente
+app.put("/users/:userId/asignaciones", authMiddleware, async (req, res) => {
+  try {
+    const { asignaciones, cargo } = req.body;
+    const data = {};
+    if (asignaciones !== undefined) data.asignaciones = JSON.stringify(asignaciones);
+    if (cargo !== undefined) data.cargo = cargo;
+    const updated = await prisma.user.update({
+      where: { id: req.params.userId },
+      data
+    });
+    res.json({ ok: true, usuario: { ...updated, asignaciones: asignaciones || [] } });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// GET: perfil propio con asignaciones
+app.get("/users/me", authMiddleware, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { id: true, name: true, email: true, cargo: true, asignaciones: true, institutionId: true }
+    });
+    res.json({ ok: true, usuario: { ...user, asignaciones: user.asignaciones ? JSON.parse(user.asignaciones) : [] } });
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
 
