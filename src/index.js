@@ -833,6 +833,229 @@ app.get("/mallas/:institutionId", async (req, res) => {
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
 
+
+// ══════════════════════════════════════════════════════
+//  PIZARRA ESCOLAR
+// ══════════════════════════════════════════════════════
+
+// GET: obtener mensajes de la pizarra por grado
+app.get("/pizarra/:grado", authMiddleware, async (req, res) => {
+  try {
+    const grado = decodeURIComponent(req.params.grado);
+    const key = `pizarra_${req.user.institutionId}_${grado}`;
+    const nota = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } }
+    }).catch(() => null);
+    const mensajes = nota ? JSON.parse(nota.data || "[]") : [];
+    res.json({ ok: true, mensajes });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// GET: pizarra para estudiantes (sin auth de docente)
+app.get("/pizarra-est/:institutionId/:grado", authEst, async (req, res) => {
+  try {
+    const grado = decodeURIComponent(req.params.grado);
+    const instId = req.params.institutionId;
+    const key = `pizarra_${instId}_${grado}`;
+    const nota = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: instId, key } }
+    }).catch(() => null);
+    const mensajes = nota ? JSON.parse(nota.data || "[]") : [];
+    res.json({ ok: true, mensajes });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// POST: docente publica mensaje en pizarra
+app.post("/pizarra", authMiddleware, async (req, res) => {
+  try {
+    const { grado, texto, tipo } = req.body;
+    if (!grado || !texto) return res.status(400).json({ mensaje: "Grado y texto requeridos" });
+    const key = `pizarra_${req.user.institutionId}_${grado}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } }
+    }).catch(() => null);
+    const mensajes = existing ? JSON.parse(existing.data || "[]") : [];
+    const nuevo = {
+      id: Date.now().toString(),
+      texto,
+      tipo: tipo || "anuncio",
+      autor: req.user.name,
+      autorId: req.user.id,
+      grado,
+      fecha: new Date().toISOString(),
+      postits: []
+    };
+    mensajes.unshift(nuevo);
+    await prisma.notaClase.upsert({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } },
+      update: { data: JSON.stringify(mensajes), updatedAt: new Date() },
+      create: { institutionId: req.user.institutionId, key, data: JSON.stringify(mensajes) }
+    });
+    res.json({ ok: true, mensaje: nuevo });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// DELETE: docente elimina mensaje
+app.delete("/pizarra/:grado/:mensajeId", authMiddleware, async (req, res) => {
+  try {
+    const grado = decodeURIComponent(req.params.grado);
+    const key = `pizarra_${req.user.institutionId}_${grado}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } }
+    }).catch(() => null);
+    if (!existing) return res.json({ ok: true });
+    const mensajes = JSON.parse(existing.data || "[]").filter(m => m.id !== req.params.mensajeId);
+    await prisma.notaClase.update({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } },
+      data: { data: JSON.stringify(mensajes), updatedAt: new Date() }
+    });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// POST: estudiante agrega post-it a un mensaje
+app.post("/pizarra-postit/:institutionId/:grado/:mensajeId", authEst, async (req, res) => {
+  try {
+    const grado = decodeURIComponent(req.params.grado);
+    const instId = req.params.institutionId;
+    const key = `pizarra_${instId}_${grado}`;
+    const { texto, color } = req.body;
+    if (!texto) return res.status(400).json({ mensaje: "Texto requerido" });
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: instId, key } }
+    }).catch(() => null);
+    if (!existing) return res.status(404).json({ mensaje: "Pizarra no encontrada" });
+    const mensajes = JSON.parse(existing.data || "[]");
+    const msg = mensajes.find(m => m.id === req.params.mensajeId);
+    if (!msg) return res.status(404).json({ mensaje: "Mensaje no encontrado" });
+    const postit = {
+      id: Date.now().toString(),
+      texto,
+      color: color || "#fef08a",
+      autor: req.student.name,
+      autorId: req.student.id,
+      fecha: new Date().toISOString()
+    };
+    if (!msg.postits) msg.postits = [];
+    msg.postits.push(postit);
+    await prisma.notaClase.update({
+      where: { institutionId_key: { institutionId: instId, key } },
+      data: { data: JSON.stringify(mensajes), updatedAt: new Date() }
+    });
+    res.json({ ok: true, postit });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// DELETE: estudiante elimina su propio post-it
+app.delete("/pizarra-postit/:institutionId/:grado/:mensajeId/:postitId", authEst, async (req, res) => {
+  try {
+    const grado = decodeURIComponent(req.params.grado);
+    const instId = req.params.institutionId;
+    const key = `pizarra_${instId}_${grado}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: instId, key } }
+    }).catch(() => null);
+    if (!existing) return res.json({ ok: true });
+    const mensajes = JSON.parse(existing.data || "[]");
+    const msg = mensajes.find(m => m.id === req.params.mensajeId);
+    if (msg) {
+      msg.postits = (msg.postits || []).filter(p => 
+        !(p.id === req.params.postitId && p.autorId === req.student.id)
+      );
+    }
+    await prisma.notaClase.update({
+      where: { institutionId_key: { institutionId: instId, key } },
+      data: { data: JSON.stringify(mensajes), updatedAt: new Date() }
+    });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+
+// ══════════════════════════════════════════════════════
+//  REPOSITORIO DE MATERIALES (BLOG DOCENTE)
+// ══════════════════════════════════════════════════════
+
+// GET: listar materiales del docente
+app.get("/materiales", authMiddleware, async (req, res) => {
+  try {
+    const key = `materiales_${req.user.id}`;
+    const nota = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } }
+    }).catch(() => null);
+    const materiales = nota ? JSON.parse(nota.data || "[]") : [];
+    res.json({ ok: true, materiales });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// POST: crear material
+app.post("/materiales", authMiddleware, uploadEnt.single("archivo"), async (req, res) => {
+  try {
+    const { titulo, descripcion, categoria, contenido } = req.body;
+    if (!titulo) return res.status(400).json({ mensaje: "Título requerido" });
+    const key = `materiales_${req.user.id}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } }
+    }).catch(() => null);
+    const materiales = existing ? JSON.parse(existing.data || "[]") : [];
+    const nuevo = {
+      id: Date.now().toString(),
+      titulo,
+      descripcion: descripcion || "",
+      categoria: categoria || "general",
+      contenido: contenido || "",
+      archivo: req.file ? { nombre: req.file.originalname, path: `uploads/entregas/${req.file.filename}`, size: req.file.size } : null,
+      creadoEn: new Date().toISOString(),
+      actualizadoEn: new Date().toISOString()
+    };
+    materiales.unshift(nuevo);
+    await prisma.notaClase.upsert({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } },
+      update: { data: JSON.stringify(materiales), updatedAt: new Date() },
+      create: { institutionId: req.user.institutionId, key, data: JSON.stringify(materiales) }
+    });
+    res.json({ ok: true, material: nuevo });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// PUT: editar material
+app.put("/materiales/:id", authMiddleware, async (req, res) => {
+  try {
+    const { titulo, descripcion, categoria, contenido } = req.body;
+    const key = `materiales_${req.user.id}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } }
+    }).catch(() => null);
+    if (!existing) return res.status(404).json({ mensaje: "No encontrado" });
+    const materiales = JSON.parse(existing.data || "[]");
+    const idx = materiales.findIndex(m => m.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ mensaje: "Material no encontrado" });
+    materiales[idx] = { ...materiales[idx], titulo, descripcion, categoria, contenido, actualizadoEn: new Date().toISOString() };
+    await prisma.notaClase.update({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } },
+      data: { data: JSON.stringify(materiales), updatedAt: new Date() }
+    });
+    res.json({ ok: true, material: materiales[idx] });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// DELETE: eliminar material
+app.delete("/materiales/:id", authMiddleware, async (req, res) => {
+  try {
+    const key = `materiales_${req.user.id}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } }
+    }).catch(() => null);
+    if (!existing) return res.json({ ok: true });
+    const materiales = JSON.parse(existing.data || "[]").filter(m => m.id !== req.params.id);
+    await prisma.notaClase.update({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } },
+      data: { data: JSON.stringify(materiales), updatedAt: new Date() }
+    });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
 // ── INICIAR ───────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
