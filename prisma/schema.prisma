@@ -75,6 +75,7 @@ model Task {
   grade         String?
   dueDate       DateTime?
   activity      String?     // SQLite: String en vez de Json
+  materialRef   String?     // Texto o link de referencia para el estudiante
   code          String      @unique @default(cuid())
   userId        String
   user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
