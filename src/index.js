@@ -378,7 +378,10 @@ app.post("/tasks/auto-calificar/:entregaId", authMiddleware, async (req, res) =>
       const respCorrecta = rawCorrecta.toLowerCase().replace(/^([a-d])\..*$/i, "$1");
       const rawDada = (respEstudiante[i] || respEstudiante[String(i)] || "").toString().trim();
       const respDada = rawDada.toLowerCase().replace(/^([a-d])\..*$/i, "$1");
-      const ok = respDada === respCorrecta || rawDada.toLowerCase() === rawCorrecta.toLowerCase();
+      const normC = respCorrecta === "true" ? "verdadero" : respCorrecta === "false" ? "falso" : respCorrecta;
+      const normD = respDada === "true" ? "verdadero" : respDada === "false" ? "falso" : respDada;
+      const ok = respDada === respCorrecta || normD === normC || rawDada.toLowerCase() === rawCorrecta.toLowerCase()
+        || rawDada.toLowerCase().includes(respCorrecta) || respCorrecta.includes(respDada);
       if (ok) correctas++;
       return { pregunta: p.pregunta || p.enunciado || p.afirmacion || "", correcta: respCorrecta, dada: respDada, ok };
     });
@@ -482,7 +485,11 @@ app.post("/tasks/entregar", authEst, uploadEnt.single("archivo"), async (req, re
         if (!ref) return; total++;
         const rawEst = (respAct[i] || respAct[String(i)] || "").toString().trim();
         const est = rawEst.toLowerCase().replace(/^([a-d])\..*$/i, "$1");
-        const ok = est === ref || rawEst.toLowerCase() === rawRef.toLowerCase() || (assignment.task.type === "completar" && est.includes(ref));
+        // Normalizar Verdadero/Falso vs true/false
+        const normRef = ref === "true" ? "verdadero" : ref === "false" ? "falso" : ref;
+        const normEst = est === "true" ? "verdadero" : est === "false" ? "falso" : est;
+        const ok = est === ref || normEst === normRef || rawEst.toLowerCase() === rawRef.toLowerCase() 
+          || (assignment.task.type === "completar" && (rawEst.toLowerCase().includes(ref) || ref.includes(est)));
         if (ok) correctas++;
         detalles.push({ pregunta: p.pregunta || p.enunciado || p.afirmacion, respEst: respAct[i] || "", respCorrecta: p.correcta || p.respuesta, esCorrecta: ok });
       });
