@@ -348,6 +348,52 @@ app.get("/tasks/:id/entregas", authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ mensaje: e.message }); }
 });
 
+
+// Auto-calificar basado en respuestas correctas de la actividad
+app.post("/tasks/auto-calificar/:entregaId", authMiddleware, async (req, res) => {
+  try {
+    const assignment = await prisma.assignment.findUnique({
+      where: { id: req.params.entregaId },
+      include: { task: true }
+    });
+    if (!assignment) return res.status(404).json({ mensaje: "Entrega no encontrada" });
+    
+    const actividad = assignment.task.activity;
+    if (!actividad) return res.status(400).json({ mensaje: "La tarea no tiene actividad con preguntas" });
+    
+    let actObj;
+    try { actObj = typeof actividad === "string" ? JSON.parse(actividad) : actividad; } 
+    catch(e) { return res.status(400).json({ mensaje: "Actividad inválida" }); }
+    
+    const preguntas = actObj.preguntas || [];
+    if (preguntas.length === 0) return res.status(400).json({ mensaje: "No hay preguntas con respuestas correctas" });
+    
+    let respEstudiante;
+    try { respEstudiante = JSON.parse(assignment.responses || "{}"); }
+    catch(e) { respEstudiante = {}; }
+    
+    let correctas = 0;
+    const detalle = preguntas.map((p, i) => {
+      const respCorrecta = p.correcta || p.respuesta || "";
+      const respDada = respEstudiante[`p${i}`] || respEstudiante[i] || "";
+      const ok = respDada.toString().trim().toLowerCase() === respCorrecta.toString().trim().toLowerCase();
+      if (ok) correctas++;
+      return { pregunta: p.pregunta || p.enunciado || p.afirmacion || "", correcta: respCorrecta, dada: respDada, ok };
+    });
+    
+    const porcentaje = Math.round((correctas / preguntas.length) * 100);
+    const nota = Math.round((correctas / preguntas.length) * 50) / 10; // escala 0-5
+    
+    await prisma.assignment.update({
+      where: { id: req.params.entregaId },
+      data: { grade: nota, status: "graded", gradedAt: new Date(), autoGraded: true,
+              comment: `Auto-calificado: ${correctas}/${preguntas.length} correctas (${porcentaje}%)` }
+    });
+    
+    res.json({ ok: true, nota, correctas, total: preguntas.length, porcentaje, detalle });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
 app.post("/tasks/calificar", authMiddleware, async (req, res) => {
   try {
     const { entregaId, calificacion, comentario } = req.body;
