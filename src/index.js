@@ -374,9 +374,11 @@ app.post("/tasks/auto-calificar/:entregaId", authMiddleware, async (req, res) =>
     
     let correctas = 0;
     const detalle = preguntas.map((p, i) => {
-      const respCorrecta = p.correcta || p.respuesta || "";
-      const respDada = respEstudiante[`p${i}`] || respEstudiante[i] || "";
-      const ok = respDada.toString().trim().toLowerCase() === respCorrecta.toString().trim().toLowerCase();
+      const rawCorrecta = (p.correcta || p.respuesta || "").toString().trim();
+      const respCorrecta = rawCorrecta.toLowerCase().replace(/^([a-d])\..*$/i, "$1");
+      const rawDada = (respEstudiante[i] || respEstudiante[String(i)] || "").toString().trim();
+      const respDada = rawDada.toLowerCase().replace(/^([a-d])\..*$/i, "$1");
+      const ok = respDada === respCorrecta || rawDada.toLowerCase() === rawCorrecta.toLowerCase();
       if (ok) correctas++;
       return { pregunta: p.pregunta || p.enunciado || p.afirmacion || "", correcta: respCorrecta, dada: respDada, ok };
     });
@@ -475,10 +477,12 @@ app.post("/tasks/entregar", authEst, uploadEnt.single("archivo"), async (req, re
     if (["quiz", "completar", "verdadero_falso"].includes(assignment.task.type) && assignment.task.activity?.preguntas) {
       let correctas = 0, total = 0; const detalles = [];
       assignment.task.activity.preguntas.forEach((p, i) => {
-        const ref = (p.correcta || p.respuesta || "").toString().trim().toLowerCase();
+        const rawRef = (p.correcta || p.respuesta || "").toString().trim();
+        const ref = rawRef.toLowerCase().replace(/^([a-d])\..*$/i, "$1");
         if (!ref) return; total++;
-        const est = (respAct[i] || "").toString().trim().toLowerCase();
-        const ok = est === ref || (assignment.task.type === "completar" && est.includes(ref));
+        const rawEst = (respAct[i] || respAct[String(i)] || "").toString().trim();
+        const est = rawEst.toLowerCase().replace(/^([a-d])\..*$/i, "$1");
+        const ok = est === ref || rawEst.toLowerCase() === rawRef.toLowerCase() || (assignment.task.type === "completar" && est.includes(ref));
         if (ok) correctas++;
         detalles.push({ pregunta: p.pregunta || p.enunciado || p.afirmacion, respEst: respAct[i] || "", respCorrecta: p.correcta || p.respuesta, esCorrecta: ok });
       });
