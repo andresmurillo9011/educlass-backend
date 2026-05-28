@@ -412,6 +412,9 @@ app.post("/tasks/auto-calificar/:entregaId", authMiddleware, async (req, res) =>
 // Calificar respuesta abierta con IA
 app.post("/tasks/calificar-ia/:entregaId", authMiddleware, async (req, res) => {
   try {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return res.status(400).json({ ok: false, mensaje: "ANTHROPIC_API_KEY no configurada en el servidor" });
+    }
     const assignment = await prisma.assignment.findUnique({
       where: { id: req.params.entregaId },
       include: { task: true }
@@ -443,8 +446,13 @@ Evalúa la respuesta en escala de 0 a 5 (Colombia). Responde SOLO con JSON:
     const data = await r.json();
     const text = data.content?.[0]?.text || "{}";
     let resultado;
-    try { resultado = JSON.parse(text.replace(/```json|```/g, "").trim()); }
-    catch(e) { resultado = { nota: 2.5, comentario: "Evaluación manual requerida" }; }
+    try { 
+      const clean = text.replace(/```json|```/g, "").trim();
+      resultado = JSON.parse(clean); 
+      if (resultado.nota == null) resultado.nota = 2.5;
+      if (!resultado.comentario) resultado.comentario = "Sin comentario de la IA";
+    }
+    catch(e) { resultado = { nota: 2.5, comentario: "No se pudo parsear respuesta de IA: " + text.substring(0,100) }; }
     
     await prisma.assignment.update({
       where: { id: req.params.entregaId },
