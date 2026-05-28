@@ -143,9 +143,23 @@ app.post("/auth/login", async (req, res) => {
     if (!user) return res.status(401).json({ mensaje: "Correo no registrado" });
     if (!await bcrypt.compare(password || "", user.password)) return res.status(401).json({ mensaje: "Contraseña incorrecta" });
     const { password: _, ...pub } = user;
-    const token = jwt.sign({ id: user.id, role: "teacher", institutionId: user.institutionId }, JWT_SECRET, { expiresIn: "30d" });
-    res.json({ usuario: pub, token });
+    const cargoLower = (user.cargo || "").toLowerCase();
+    const esAdmin = cargoLower === "admin" || cargoLower === "superadmin";
+    const token = jwt.sign({ id: user.id, role: esAdmin ? "admin" : "teacher", institutionId: user.institutionId }, JWT_SECRET, { expiresIn: "30d" });
+    res.json({ ok: true, usuario: { ...pub, role: esAdmin ? "admin" : "docente" }, token });
   } catch (e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// Endpoint para actualizar cargo de un docente (solo admin)
+app.put("/users/:userId/cargo", authMiddleware, async (req, res) => {
+  try {
+    const { cargo } = req.body;
+    const updated = await prisma.user.update({
+      where: { id: req.params.userId },
+      data: { cargo }
+    });
+    res.json({ ok: true, usuario: updated });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
 
 app.post("/actualizar-perfil", authMiddleware, uploadLogo, async (req, res) => {
