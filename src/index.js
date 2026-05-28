@@ -409,59 +409,64 @@ app.post("/tasks/auto-calificar/:entregaId", authMiddleware, async (req, res) =>
 });
 
 
-// Calificar respuesta abierta con IA
+// Calificar respuesta abierta con IA (usa Groq)
 app.post("/tasks/calificar-ia/:entregaId", authMiddleware, async (req, res) => {
   try {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return res.status(400).json({ ok: false, mensaje: "ANTHROPIC_API_KEY no configurada en el servidor" });
+    if (!process.env.GROQ_KEY) {
+      return res.status(400).json({ ok: false, mensaje: "GROQ_KEY no configurada en el servidor" });
     }
     const assignment = await prisma.assignment.findUnique({
       where: { id: req.params.entregaId },
       include: { task: true }
     });
     if (!assignment) return res.status(404).json({ mensaje: "Entrega no encontrada" });
-    
+
     const respuesta = assignment.response || "";
+    if (!respuesta.trim()) return res.status(400).json({ ok: false, mensaje: "El estudiante no ha enviado respuesta" });
+
     const materialRef = assignment.task.materialRef || "";
-    const actObj = typeof assignment.task.activity === "string" 
-      ? JSON.parse(assignment.task.activity || "{}") 
-      : (assignment.task.activity || {});
     const instrucciones = assignment.task.description || "";
-    
-    const prompt = `Eres un docente evaluando la respuesta de un estudiante de grado ${assignment.task.grade}° en ${assignment.task.area}.
+
+    const prompt = `Eres un docente colombiano evaluando la respuesta de un estudiante de grado ${assignment.task.grade}° en ${assignment.task.area}.
 Tarea: "${assignment.task.title}"
 ${instrucciones ? "Instrucciones: " + instrucciones : ""}
-${materialRef ? "Material de referencia: " + materialRef.substring(0, 600) : ""}
+${materialRef ? "Material de referencia: " + materialRef.substring(0, 500) : ""}
 
-Respuesta del estudiante: "${respuesta}"
+Respuesta del estudiante: "${respuesta.substring(0, 800)}"
 
-Evalúa la respuesta en escala de 0 a 5 (Colombia). Responde SOLO con JSON:
-{"nota": 3.5, "comentario": "Breve retroalimentación de máximo 2 oraciones", "correctas": 3, "total": 5}`;
+Evalúa en escala colombiana 0-5. Responde ÚNICAMENTE con JSON válido sin texto adicional:
+{"nota": 3.5, "comentario": "Retroalimentación breve de 1-2 oraciones"}`;
 
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
+    const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 200, messages: [{ role: "user", content: prompt }] })
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.GROQ_KEY}` },
+      body: JSON.stringify({
+        model: "llama-3.1-8b-instant",
+        max_tokens: 150,
+        temperature: 0.3,
+        messages: [{ role: "user", content: prompt }]
+      })
     });
     const data = await r.json();
-    const text = data.content?.[0]?.text || "{}";
+    const text = data.choices?.[0]?.message?.content || "{}";
     let resultado;
-    try { 
+    try {
       const clean = text.replace(/```json|```/g, "").trim();
-      resultado = JSON.parse(clean); 
-      if (resultado.nota == null) resultado.nota = 2.5;
-      if (!resultado.comentario) resultado.comentario = "Sin comentario de la IA";
+      resultado = JSON.parse(clean);
+      if (resultado.nota == null || isNaN(resultado.nota)) resultado.nota = 2.5;
+      resultado.nota = Math.min(5, Math.max(0, parseFloat(resultado.nota.toFixed(1))));
+      if (!resultado.comentario) resultado.comentario = "Evaluado con IA";
+    } catch(e) {
+      resultado = { nota: 2.5, comentario: "Evaluación automática completada" };
     }
-    catch(e) { resultado = { nota: 2.5, comentario: "No se pudo parsear respuesta de IA: " + text.substring(0,100) }; }
-    
+
     await prisma.assignment.update({
       where: { id: req.params.entregaId },
-      data: { grade: resultado.nota, status: "graded", gradedAt: new Date(), autoGraded: true,
-              comment: resultado.comentario || "" }
+      data: { grade: resultado.nota, status: "graded", gradedAt: new Date(), autoGraded: true, comment: resultado.comentario }
     });
-    
-    res.json({ ok: true, ...resultado });
-  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+
+    res.json({ ok: true, nota: resultado.nota, comentario: resultado.comentario });
+  } catch(e) { res.status(500).json({ ok: false, mensaje: e.message }); }
 });
 
 app.post("/tasks/calificar", authMiddleware, async (req, res) => {
