@@ -192,6 +192,19 @@ app.post("/auth/login-estudiante", async (req, res) => {
 });
 
 // ── ESTUDIANTES ───────────────────────────────────────
+
+// GET: listar docentes de la institución
+app.get("/users", authMiddleware, async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { institutionId: req.user.institutionId },
+      select: { id: true, name: true, email: true, cargo: true, createdAt: true },
+      orderBy: { name: "asc" }
+    });
+    res.json({ ok: true, usuarios: users });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
 app.get("/students", authMiddleware, async (req, res) => {
   try {
     const students = await prisma.student.findMany({
