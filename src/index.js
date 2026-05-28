@@ -349,6 +349,61 @@ app.get("/tasks/:id/entregas", authMiddleware, async (req, res) => {
 });
 
 
+
+// ── HELPER: Auto-asignar nota al libro de notas ────────────────────────
+async function autoAsignarNota(userId, institutionId, tarea, studentId, nota) {
+  try {
+    const key = `periodos_${userId}_notas`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId, key } }
+    }).catch(() => null);
+    if (!existing) return;
+
+    const periodos = JSON.parse(existing.data || "[]");
+    const tituloTarea = (tarea.title || "").toLowerCase().trim();
+    const areaTarea = (tarea.area || "").toLowerCase().trim();
+    const gradoTarea = (tarea.grade || "").toLowerCase().replace("°","").trim();
+
+    // Buscar periodo que coincida con grado y área
+    let periodoIdx = -1, actIdx = -1;
+    for (let i = 0; i < periodos.length; i++) {
+      const p = periodos[i];
+      const pGrado = (p.grado || "").toLowerCase().replace("°","").trim();
+      const pArea = (p.area || "").toLowerCase().trim();
+      if (pGrado !== gradoTarea || pArea !== areaTarea) continue;
+
+      // Buscar actividad con nombre similar al título de la tarea
+      const acts = p.actividades || [];
+      for (let j = 0; j < acts.length; j++) {
+        const actNombre = (acts[j] || "").toLowerCase().trim();
+        if (actNombre === tituloTarea || tituloTarea.includes(actNombre) || actNombre.includes(tituloTarea)) {
+          periodoIdx = i; actIdx = j; break;
+        }
+      }
+      // Si no hay coincidencia exacta, buscar actividad vacía (sin notas asignadas para este estudiante)
+      if (actIdx === -1) {
+        const notasP = p.notas || {};
+        const notasEst = notasP[studentId] || {};
+        for (let j = 0; j < acts.length; j++) {
+          if (!notasEst[j] && notasEst[j] !== 0) { periodoIdx = i; actIdx = j; break; }
+        }
+      }
+      if (periodoIdx !== -1) break;
+    }
+
+    if (periodoIdx === -1 || actIdx === -1) return; // No encontró dónde asignar
+
+    if (!periodos[periodoIdx].notas) periodos[periodoIdx].notas = {};
+    if (!periodos[periodoIdx].notas[studentId]) periodos[periodoIdx].notas[studentId] = {};
+    periodos[periodoIdx].notas[studentId][actIdx] = parseFloat(nota.toFixed(1));
+
+    await prisma.notaClase.update({
+      where: { institutionId_key: { institutionId, key } },
+      data: { data: JSON.stringify(periodos), updatedAt: new Date() }
+    });
+  } catch(e) { console.error("autoAsignarNota error:", e.message); }
+}
+
 // Auto-calificar basado en respuestas correctas de la actividad
 app.post("/tasks/auto-calificar/:entregaId", authMiddleware, async (req, res) => {
   try {
@@ -404,6 +459,8 @@ app.post("/tasks/auto-calificar/:entregaId", authMiddleware, async (req, res) =>
       // Solo notificar que hay preguntas abiertas sin calificar
       return res.json({ ok: true, nota, correctas, total: preguntas.length, porcentaje, detalle, tieneAbiertas: true });
     }
+    // Auto-asignar al libro de notas
+    await autoAsignarNota(assignment.task.userId, assignment.task.institutionId, assignment.task, assignment.studentId, nota);
     res.json({ ok: true, nota, correctas, total: preguntas.length, porcentaje, detalle });
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
@@ -465,6 +522,8 @@ Evalúa en escala colombiana 0-5. Responde ÚNICAMENTE con JSON válido sin text
       data: { grade: resultado.nota, status: "graded", gradedAt: new Date(), autoGraded: true, comment: resultado.comentario }
     });
 
+    // Auto-asignar al libro de notas
+    await autoAsignarNota(req.user.id, req.user.institutionId, assignment.task, assignment.studentId, resultado.nota);
     res.json({ ok: true, nota: resultado.nota, comentario: resultado.comentario });
   } catch(e) { res.status(500).json({ ok: false, mensaje: e.message }); }
 });
@@ -473,6 +532,9 @@ app.post("/tasks/calificar", authMiddleware, async (req, res) => {
   try {
     const { entregaId, calificacion, comentario } = req.body;
     const a = await prisma.assignment.update({ where: { id: entregaId }, data: { grade: parseFloat(calificacion), comment: comentario || "", status: "graded", gradedAt: new Date() } });
+    // Auto-asignar al libro de notas
+    const asg = await prisma.assignment.findUnique({ where: { id: entregaId }, include: { task: true } }).catch(() => null);
+    if (asg) await autoAsignarNota(asg.task.userId, asg.task.institutionId, asg.task, asg.studentId, parseFloat(calificacion));
     res.json({ ok: true, entrega: a });
   } catch (e) { res.status(500).json({ mensaje: e.message }); }
 });
