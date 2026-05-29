@@ -1478,6 +1478,42 @@ Las palabras en MAYÚSCULAS sin tildes ni espacios, entre 4-8 letras. Exactament
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
 
+
+// Guardar juego asignado por grado
+app.post("/juegos", authMiddleware, async (req, res) => {
+  try {
+    const { juego, grado } = req.body;
+    if (!juego || !grado) return res.status(400).json({ mensaje: "Juego y grado requeridos" });
+    const key = `juegos_${req.user.institutionId}_${grado}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } }
+    }).catch(() => null);
+    const juegos = existing ? JSON.parse(existing.data || "[]") : [];
+    const nuevo = { id: Date.now().toString(), ...juego, grado, creadoEn: new Date().toISOString(), docente: req.user.name };
+    juegos.unshift(nuevo);
+    // Guardar máximo 10 juegos por grado
+    const limitados = juegos.slice(0, 10);
+    await prisma.notaClase.upsert({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } },
+      update: { data: JSON.stringify(limitados), updatedAt: new Date() },
+      create: { institutionId: req.user.institutionId, key, data: JSON.stringify(limitados) }
+    });
+    res.json({ ok: true, juego: nuevo });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// Obtener juegos por grado (para estudiantes)
+app.get("/juegos/:institutionId/:grado", authEst, async (req, res) => {
+  try {
+    const key = `juegos_${req.params.institutionId}_${decodeURIComponent(req.params.grado)}`;
+    const nota = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.params.institutionId, key } }
+    }).catch(() => null);
+    const juegos = nota ? JSON.parse(nota.data || "[]") : [];
+    res.json({ ok: true, juegos });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
 // ── INICIAR ───────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
