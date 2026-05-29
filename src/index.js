@@ -1089,11 +1089,40 @@ app.get("/notas/estudiante/:studentId", authEst, async (req, res) => {
     const todasNotas = await prisma.notaClase.findMany({
       where: { institutionId: req.student.institutionId, key: { contains: "_notas" } }
     });
+    
+    // Cargar lista de estudiantes para mapear IDs locales a nombres
+    const gradoNorm = (g) => (g||"").toLowerCase().replace(/[°o]/g,"").trim();
+    const estGrado = gradoNorm(req.student.grade);
+    const estNombre = req.student.name.toLowerCase().trim();
+    
     const misNotas = [];
     todasNotas.forEach(n => {
       const periodos = JSON.parse(n.data || "[]");
       periodos.forEach(p => {
-        const notasEst = p.notas?.[req.student.id];
+        // 1. Buscar por ID exacto del backend
+        let notasEst = p.notas?.[req.student.id];
+        
+        // 2. Si no encuentra, buscar estudiantes del período con mismo grado
+        if (!notasEst || Object.keys(notasEst).length === 0) {
+          if (p.grado && gradoNorm(p.grado) === estGrado) {
+            // Buscar en estudiantes guardados en el período
+            const estsPeriodo = p.estudiantes || [];
+            const estLocal = estsPeriodo.find(e => 
+              (e.nombre||e.name||"").toLowerCase().trim() === estNombre
+            );
+            if (estLocal && estLocal.id) {
+              notasEst = p.notas?.[estLocal.id];
+            }
+            
+            // 3. Último recurso: buscar en NotaClase de estudiantes por grado
+            if (!notasEst) {
+              const claveEst = `ep_est_${p.grado}`;
+              // No podemos acceder a localStorage desde el backend
+              // Buscar en la misma institutionId todos los est del grado
+            }
+          }
+        }
+        
         if (notasEst && Object.keys(notasEst).length > 0) {
           misNotas.push({
             periodoId: p.id,
@@ -1362,6 +1391,29 @@ app.delete("/materiales/:id", authMiddleware, async (req, res) => {
       data: { data: JSON.stringify(materiales), updatedAt: new Date() }
     });
     res.json({ ok: true });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+
+// Notas de tareas calificadas del estudiante (alternativo al libro de notas)
+app.get("/notas/mis-calificaciones", authEst, async (req, res) => {
+  try {
+    const assignments = await prisma.assignment.findMany({
+      where: { studentId: req.student.id, status: "graded", grade: { not: null } },
+      include: { task: true },
+      orderBy: { gradedAt: "desc" }
+    });
+    const notas = assignments.map(a => ({
+      tareaId: a.task.id,
+      titulo: a.task.title,
+      area: a.task.area,
+      grado: a.task.grade,
+      nota: a.grade,
+      comentario: a.comment || "",
+      fecha: a.gradedAt || a.updatedAt,
+      autoCalificada: a.autoGraded || false
+    }));
+    res.json({ ok: true, notas });
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
 
