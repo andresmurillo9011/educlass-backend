@@ -559,15 +559,38 @@ app.post("/tasks/calificar-ia/:entregaId", authMiddleware, async (req, res) => {
     const materialRef = assignment.task.materialRef || "";
     const instrucciones = assignment.task.description || "";
 
-    const prompt = `Eres un docente colombiano evaluando la respuesta de un estudiante de grado ${assignment.task.grade}° en ${assignment.task.area}.
+    // Reconstruir preguntas con respuestas para evaluación detallada
+    let preguntasTexto = "";
+    try {
+      const respsObj = JSON.parse(assignment.responses || "{}");
+      const actObj2 = typeof assignment.task.activity === "string"
+        ? JSON.parse(assignment.task.activity || "{}") : (assignment.task.activity || {});
+      const pregs2 = actObj2.preguntas || [];
+      if (pregs2.length > 0) {
+        preguntasTexto = pregs2.map((p, i) => {
+          const preg = p.pregunta || p.enunciado || p.afirmacion || `Pregunta ${i+1}`;
+          const correcta = p.correcta || p.respuesta || "";
+          const dada = respsObj[i] || respsObj[String(i)] || "(sin respuesta)";
+          return `P${i+1}: ${preg}\nRespuesta estudiante: ${dada}${correcta ? "\nRespuesta esperada: " + correcta : ""}`;
+        }).join("\n\n");
+      }
+    } catch(_) {}
+
+    const prompt = `Eres un docente colombiano evaluando a un estudiante de grado ${assignment.task.grade}° en ${assignment.task.area}.
 Tarea: "${assignment.task.title}"
 ${instrucciones ? "Instrucciones: " + instrucciones : ""}
-${materialRef ? "Material de referencia: " + materialRef.substring(0, 500) : ""}
+${materialRef ? "Material referencia: " + materialRef.substring(0, 400) : ""}
 
-Respuesta del estudiante: "${respuesta.substring(0, 800)}"
+${preguntasTexto ? "PREGUNTAS Y RESPUESTAS:\n" + preguntasTexto : "Respuesta del estudiante: " + respuesta.substring(0, 800)}
 
-Evalúa en escala colombiana 0-5. Responde ÚNICAMENTE con JSON válido sin texto adicional:
-{"nota": 3.5, "comentario": "Retroalimentación breve de 1-2 oraciones"}`;
+INSTRUCCIONES DE EVALUACIÓN:
+- Evalúa CADA respuesta individualmente considerando si el concepto es correcto aunque no sea exacto
+- Para preguntas abiertas: acepta respuestas que demuestren comprensión del concepto
+- Para V/F: "Verdadero"="true", "Falso"="false" son equivalentes
+- Calcula el promedio real de respuestas correctas
+- Escala colombiana 0.0 a 5.0 (aprobado desde 3.0)
+- Responde ÚNICAMENTE con JSON sin texto adicional:
+{"nota": 4.0, "comentario": "Retroalimentación específica de 2-3 oraciones mencionando qué estuvo bien y qué mejorar"}`;
 
     const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
@@ -612,6 +635,23 @@ app.post("/tasks/calificar", authMiddleware, async (req, res) => {
     if (asg) await autoAsignarNota(asg.task.userId, asg.task.institutionId, asg.task, asg.studentId, parseFloat(calificacion));
     res.json({ ok: true, entrega: a });
   } catch (e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// PUT: editar tarea
+app.put("/tasks/:id", authMiddleware, async (req, res) => {
+  try {
+    const { titulo, descripcion, fechaEntrega, materialRef } = req.body;
+    const data = {};
+    if (titulo !== undefined) data.title = titulo;
+    if (descripcion !== undefined) data.description = descripcion;
+    if (materialRef !== undefined) data.materialRef = materialRef;
+    if (fechaEntrega !== undefined) data.dueDate = fechaEntrega ? new Date(fechaEntrega) : null;
+    const updated = await prisma.task.update({
+      where: { id: req.params.id },
+      data
+    });
+    res.json({ ok: true, tarea: updated });
+  } catch(e) { res.status(500).json({ ok: false, mensaje: e.message }); }
 });
 
 app.delete("/tasks/:id", authMiddleware, async (req, res) => {
