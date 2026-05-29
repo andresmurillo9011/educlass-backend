@@ -1417,6 +1417,67 @@ app.get("/notas/mis-calificaciones", authEst, async (req, res) => {
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
 
+
+// ══════════════════════════════════════════════════════
+//  JUEGOS MENTALES
+// ══════════════════════════════════════════════════════
+
+app.post("/generar-juego", authMiddleware, async (req, res) => {
+  try {
+    const { tipo, tema, area, grado } = req.body;
+    if (!tipo || !tema) return res.status(400).json({ mensaje: "Tipo y tema requeridos" });
+
+    const prompts = {
+      sopa: `Genera una sopa de letras educativa sobre "${tema}" para ${area} grado ${grado}° Colombia.
+Responde SOLO con JSON válido:
+{
+  "palabras": ["PALABRA1","PALABRA2","PALABRA3","PALABRA4","PALABRA5","PALABRA6","PALABRA7","PALABRA8"],
+  "pistas": ["Definición o pista de PALABRA1","pista de PALABRA2","pista de PALABRA3","pista de PALABRA4","pista de PALABRA5","pista de PALABRA6","pista de PALABRA7","pista de PALABRA8"]
+}
+Las palabras deben ser en MAYÚSCULAS, sin tildes, sin espacios, entre 4 y 10 letras. Exactamente 8 palabras.`,
+
+      crucigrama: `Genera un crucigrama educativo sobre "${tema}" para ${area} grado ${grado}° Colombia.
+Responde SOLO con JSON válido:
+{
+  "palabras": [
+    {"palabra":"TERMINO1","pista":"Definición clara de TERMINO1","direccion":"horizontal","fila":0,"col":0},
+    {"palabra":"TERMINO2","pista":"Definición clara de TERMINO2","direccion":"vertical","fila":0,"col":0},
+    {"palabra":"TERMINO3","pista":"Definición clara de TERMINO3","direccion":"horizontal","fila":2,"col":1},
+    {"palabra":"TERMINO4","pista":"Definición clara de TERMINO4","direccion":"vertical","fila":1,"col":3},
+    {"palabra":"TERMINO5","pista":"Definición clara de TERMINO5","direccion":"horizontal","fila":4,"col":0}
+  ]
+}
+Las palabras en MAYÚSCULAS sin tildes ni espacios, entre 4-8 letras. Exactamente 5 palabras que se crucen entre sí.`
+    };
+
+    const prompt = prompts[tipo];
+    if (!prompt) return res.status(400).json({ mensaje: "Tipo inválido" });
+
+    const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.GROQ_KEY}` },
+      body: JSON.stringify({
+        model: "llama-3.1-8b-instant",
+        max_tokens: 800,
+        temperature: 0.7,
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+
+    const data = await r.json();
+    const text = data.choices?.[0]?.message?.content || "{}";
+    let juego;
+    try {
+      const clean = text.replace(/```json|```/g, "").trim();
+      juego = JSON.parse(clean);
+    } catch(e) {
+      return res.status(500).json({ mensaje: "Error generando el juego, intenta de nuevo" });
+    }
+
+    res.json({ ok: true, juego: { tipo, tema, area, grado, ...juego } });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
 // ── INICIAR ───────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
