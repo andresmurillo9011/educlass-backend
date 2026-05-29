@@ -642,6 +642,7 @@ app.get("/tasks/mis-tareas-estudiante", authEst, async (req, res) => {
       .map(t => {
         return {
           id: t.id, titulo: t.title, descripcion: t.description,
+          materialRef: t.materialRef || "",
           tipo: t.type, area: t.area, grado: t.grade,
           fechaEntrega: t.dueDate, actividad: t.activity,
           entregada: false,
