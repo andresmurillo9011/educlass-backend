@@ -1436,6 +1436,21 @@ Responde SOLO con JSON válido:
 }
 Las palabras deben ser en MAYÚSCULAS, sin tildes, sin espacios, entre 4 y 10 letras. Exactamente 8 palabras.`,
 
+      unir: `Genera un juego de unir definiciones sobre "${tema}" para ${area} grado ${grado}° Colombia.
+Responde SOLO con JSON válido:
+{"pares": [{"termino":"TÉRMINO1","definicion":"Definición clara 1"},{"termino":"TÉRMINO2","definicion":"Definición clara 2"},{"termino":"TÉRMINO3","definicion":"Definición clara 3"},{"termino":"TÉRMINO4","definicion":"Definición clara 4"},{"termino":"TÉRMINO5","definicion":"Definición clara 5"},{"termino":"TÉRMINO6","definicion":"Definición clara 6"}]}
+Exactamente 6 pares. Los términos cortos (1-3 palabras), las definiciones claras.`,
+
+      completar: `Genera 6 oraciones para completar sobre "${tema}" para ${area} grado ${grado}° Colombia.
+Responde SOLO con JSON válido:
+{"oraciones": [{"texto":"La ___ es fundamental en...","respuesta":"palabra","pista":"Pista opcional"},{"texto":"El proceso de ___ permite...","respuesta":"termino","pista":"pista"}]}
+La respuesta debe ser UNA palabra clave. Exactamente 6 oraciones.`,
+
+      impostor: `Genera un juego "El Impostor" sobre "${tema}" para ${area} grado ${grado}° Colombia.
+Hay grupos de palabras donde una NO pertenece. Responde SOLO con JSON válido:
+{"grupos": [{"palabras":["TÉRMINO1","TÉRMINO2","TÉRMINO3","IMPOSTOR"],"impostor":"IMPOSTOR","explicacion":"Explicación de por qué IMPOSTOR no pertenece"},{"palabras":["A","B","C","D"],"impostor":"D","explicacion":"..."},{"palabras":["X","Y","Z","W"],"impostor":"W","explicacion":"..."}]}
+Exactamente 3 grupos de 4 palabras cada uno.`,
+
       crucigrama: `Genera un crucigrama educativo sobre "${tema}" para ${area} grado ${grado}° Colombia.
 Responde SOLO con JSON válido:
 {
