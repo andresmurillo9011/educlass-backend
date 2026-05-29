@@ -536,7 +536,24 @@ app.post("/tasks/calificar-ia/:entregaId", authMiddleware, async (req, res) => {
     });
     if (!assignment) return res.status(404).json({ mensaje: "Entrega no encontrada" });
 
-    const respuesta = assignment.response || "";
+    let respuesta = assignment.response || "";
+    // Si no hay respuesta libre, construir el texto desde respuestasActividad
+    if (!respuesta.trim()) {
+      try {
+        const resps = JSON.parse(assignment.responses || "{}");
+        const actObj = typeof assignment.task.activity === "string"
+          ? JSON.parse(assignment.task.activity || "{}")
+          : (assignment.task.activity || {});
+        const pregs = actObj.preguntas || actObj.pares || [];
+        if (pregs.length > 0 && Object.keys(resps).length > 0) {
+          respuesta = pregs.map((p, i) => {
+            const preg = p.pregunta || p.enunciado || p.afirmacion || `Pregunta ${i+1}`;
+            const resp = resps[i] || resps[String(i)] || "(sin respuesta)";
+            return `${preg}: ${resp}`;
+          }).join("\n");
+        }
+      } catch(_) {}
+    }
     if (!respuesta.trim()) return res.status(400).json({ ok: false, mensaje: "El estudiante no ha enviado respuesta" });
 
     const materialRef = assignment.task.materialRef || "";
