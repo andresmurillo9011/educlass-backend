@@ -1424,72 +1424,61 @@ app.get("/notas/mis-calificaciones", authEst, async (req, res) => {
 
 app.post("/generar-juego", authMiddleware, async (req, res) => {
   try {
-    const { tipo, tema, area, grado } = req.body;
+    const { tipo, tema, area, grado, cantidad = 6 } = req.body;
     if (!tipo || !tema) return res.status(400).json({ mensaje: "Tipo y tema requeridos" });
+    const n = Math.min(Math.max(parseInt(cantidad)||6, 3), 15);
 
     const prompts = {
-      sopa: `Genera una sopa de letras educativa sobre "${tema}" para ${area} grado ${grado}° Colombia.
-Responde SOLO con JSON válido:
-{
-  "palabras": ["PALABRA1","PALABRA2","PALABRA3","PALABRA4","PALABRA5","PALABRA6","PALABRA7","PALABRA8"],
-  "pistas": ["Definición o pista de PALABRA1","pista de PALABRA2","pista de PALABRA3","pista de PALABRA4","pista de PALABRA5","pista de PALABRA6","pista de PALABRA7","pista de PALABRA8"]
-}
-Las palabras deben ser en MAYÚSCULAS, sin tildes, sin espacios, entre 4 y 10 letras. Exactamente 8 palabras.`,
+      sopa: `Genera una sopa de letras educativa sobre "${tema}" para ${area} grado ${grado} Colombia.
+Responde SOLO con JSON válido sin texto adicional:
+{"palabras":["PALABRA1","PALABRA2","PALABRA3","PALABRA4","PALABRA5","PALABRA6","PALABRA7","PALABRA8"],"pistas":["pista1","pista2","pista3","pista4","pista5","pista6","pista7","pista8"]}
+Las palabras en MAYÚSCULAS sin tildes ni espacios, 4-10 letras. Exactamente 8 palabras con sus 8 pistas.`,
 
-      unir: `Genera un juego de unir definiciones sobre "${tema}" para ${area} grado ${grado}° Colombia.
-Responde SOLO con JSON válido:
-{"pares": [{"termino":"TÉRMINO1","definicion":"Definición clara 1"},{"termino":"TÉRMINO2","definicion":"Definición clara 2"},{"termino":"TÉRMINO3","definicion":"Definición clara 3"},{"termino":"TÉRMINO4","definicion":"Definición clara 4"},{"termino":"TÉRMINO5","definicion":"Definición clara 5"},{"termino":"TÉRMINO6","definicion":"Definición clara 6"}]}
-Exactamente 6 pares. Los términos cortos (1-3 palabras), las definiciones claras.`,
+      unir: `Genera un juego de unir términos con definiciones sobre "${tema}" para ${area} grado ${grado} Colombia.
+Responde SOLO con JSON válido sin texto adicional:
+{"pares":[{"termino":"Término1","definicion":"Definición clara 1"},{"termino":"Término2","definicion":"Definición clara 2"},{"termino":"Término3","definicion":"Definición clara 3"},{"termino":"Término4","definicion":"Definición clara 4"},{"termino":"Término5","definicion":"Definición clara 5"},{"termino":"Término6","definicion":"Definición clara 6"}]}
+Exactamente ${n} pares. Términos cortos (1-3 palabras), definiciones en máximo 10 palabras.`,
 
-      completar: `Genera 6 oraciones para completar sobre "${tema}" para ${area} grado ${grado}° Colombia.
-Responde SOLO con JSON válido:
-{"oraciones": [{"texto":"La ___ es fundamental en...","respuesta":"palabra","pista":"Pista opcional"},{"texto":"El proceso de ___ permite...","respuesta":"termino","pista":"pista"}]}
-La respuesta debe ser UNA palabra clave. Exactamente 6 oraciones.`,
+      completar: `Genera ${n} oraciones para completar sobre "${tema}" para ${area} grado ${grado} Colombia.
+REGLAS ESTRICTAS:
+- Cada oración tiene exactamente UN espacio en blanco marcado como ___
+- La respuesta es UNA sola palabra clave del tema
+- La palabra de respuesta NO debe aparecer en el texto de la oración
+- Las oraciones deben ser coherentes y educativas
 
-      impostor: `Genera un juego "El Impostor" sobre "${tema}" para ${area} grado ${grado}° Colombia.
-Hay grupos de palabras donde una NO pertenece. Responde SOLO con JSON válido:
-{"grupos": [{"palabras":["TÉRMINO1","TÉRMINO2","TÉRMINO3","IMPOSTOR"],"impostor":"IMPOSTOR","explicacion":"Explicación de por qué IMPOSTOR no pertenece"},{"palabras":["A","B","C","D"],"impostor":"D","explicacion":"..."},{"palabras":["X","Y","Z","W"],"impostor":"W","explicacion":"..."}]}
-Exactamente 3 grupos de 4 palabras cada uno.`,
+Responde SOLO con este JSON válido sin texto adicional ni comillas extras:
+{"oraciones":[{"texto":"La ___ es el proceso fundamental de...","respuesta":"fotosintesis","pista":"Proceso que realizan las plantas con la luz"},{"texto":"El ___ permite transportar oxígeno en la sangre.","respuesta":"hemoglobina","pista":"Proteína roja de los glóbulos rojos"}]}
+Genera exactamente ${n} oraciones con ese mismo formato.`,
 
-      crucigrama: `Genera un crucigrama educativo sobre "${tema}" para ${area} grado ${grado}° Colombia.
-Responde SOLO con JSON válido:
-{
-  "palabras": [
-    {"palabra":"TERMINO1","pista":"Definición clara de TERMINO1","direccion":"horizontal","fila":0,"col":0},
-    {"palabra":"TERMINO2","pista":"Definición clara de TERMINO2","direccion":"vertical","fila":0,"col":0},
-    {"palabra":"TERMINO3","pista":"Definición clara de TERMINO3","direccion":"horizontal","fila":2,"col":1},
-    {"palabra":"TERMINO4","pista":"Definición clara de TERMINO4","direccion":"vertical","fila":1,"col":3},
-    {"palabra":"TERMINO5","pista":"Definición clara de TERMINO5","direccion":"horizontal","fila":4,"col":0}
-  ]
-}
-Las palabras en MAYÚSCULAS sin tildes ni espacios, entre 4-8 letras. Exactamente 5 palabras que se crucen entre sí.`
+      impostor: `Genera un juego El Impostor sobre "${tema}" para ${area} grado ${grado} Colombia.
+Cada grupo tiene 4 palabras donde UNA no pertenece al tema del grupo.
+Responde SOLO con JSON válido sin texto adicional:
+{"grupos":[{"palabras":["TÉRMINO1","TÉRMINO2","TÉRMINO3","IMPOSTOR"],"impostor":"IMPOSTOR","explicacion":"Por qué IMPOSTOR no pertenece"},{"palabras":["A","B","C","D"],"impostor":"D","explicacion":"razón"},{"palabras":["X","Y","Z","W"],"impostor":"W","explicacion":"razón"}]}
+Exactamente ${n} grupos de exactamente 4 palabras cada uno. El impostor debe estar mezclado aleatoriamente dentro del array de palabras.`,
+
+      crucigrama: `Genera un crucigrama educativo sobre "${tema}" para ${area} grado ${grado} Colombia.
+Responde SOLO con JSON válido sin texto adicional:
+{"palabras":[{"palabra":"TERMINO1","pista":"Definición de TERMINO1","direccion":"horizontal","fila":0,"col":0},{"palabra":"TERMINO2","pista":"Definición de TERMINO2","direccion":"vertical","fila":0,"col":0},{"palabra":"TERMINO3","pista":"Definición de TERMINO3","direccion":"horizontal","fila":2,"col":1},{"palabra":"TERMINO4","pista":"Definición de TERMINO4","direccion":"vertical","fila":1,"col":3},{"palabra":"TERMINO5","pista":"Definición de TERMINO5","direccion":"horizontal","fila":4,"col":0}]}
+Palabras en MAYÚSCULAS sin tildes ni espacios, 4-8 letras. Exactamente 5 palabras.`
     };
 
     const prompt = prompts[tipo];
     if (!prompt) return res.status(400).json({ mensaje: "Tipo inválido" });
 
-    const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.GROQ_KEY}` },
-      body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
-        max_tokens: 800,
-        temperature: 0.7,
-        messages: [{ role: "user", content: prompt }]
-      })
-    });
-
-    const data = await r.json();
-    const text = data.choices?.[0]?.message?.content || "{}";
+    const txt = await llamarIA(prompt, "Eres un generador de juegos educativos. Responde ÚNICAMENTE con JSON válido, sin explicaciones ni texto adicional.", 1200, 0.7);
     let juego;
     try {
-      const clean = text.replace(/```json|```/g, "").trim();
-      juego = JSON.parse(clean);
+      const clean = txt.replace(/```json|```/g, "").replace(/^\s*[^{[]*/,"").trim();
+      // Encontrar el JSON principal
+      const start = clean.search(/[{[]/);
+      const jsonStr = start >= 0 ? clean.slice(start) : clean;
+      juego = JSON.parse(jsonStr);
     } catch(e) {
+      console.error("Parse error:", txt.slice(0,200));
       return res.status(500).json({ mensaje: "Error generando el juego, intenta de nuevo" });
     }
 
-    res.json({ ok: true, juego: { tipo, tema, area, grado, ...juego } });
+    res.json({ ok: true, juego: { tipo, tema, area, grado, cantidad: n, ...juego } });
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
 
