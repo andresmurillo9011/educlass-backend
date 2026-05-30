@@ -1529,6 +1529,58 @@ app.get("/juegos/:institutionId/:grado", authEst, async (req, res) => {
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
 
+
+// Guardar resultado de juego del estudiante
+app.post("/juegos/resultado", authEst, async (req, res) => {
+  try {
+    const { juegoId, grado, tipo, tema, correctas, total, tiempo } = req.body;
+    const instId = req.student.institutionId;
+    const key = `juegos_resultados_${instId}_${grado}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: instId, key } }
+    }).catch(() => null);
+    const resultados = existing ? JSON.parse(existing.data || "[]") : [];
+    
+    const nota = total > 0 ? parseFloat((correctas / total * 5).toFixed(1)) : 0;
+    const nuevo = {
+      id: Date.now().toString(),
+      juegoId, tipo, tema, grado,
+      estudianteId: req.student.id,
+      nombreEstudiante: req.student.name,
+      correctas, total,
+      nota,
+      porcentaje: total > 0 ? Math.round(correctas / total * 100) : 0,
+      tiempo: tiempo || 0,
+      fecha: new Date().toISOString()
+    };
+    
+    // Evitar duplicados del mismo estudiante en el mismo juego
+    const sinDup = resultados.filter(r => !(r.estudianteId === req.student.id && r.juegoId === juegoId));
+    sinDup.unshift(nuevo);
+    
+    await prisma.notaClase.upsert({
+      where: { institutionId_key: { institutionId: instId, key } },
+      update: { data: JSON.stringify(sinDup), updatedAt: new Date() },
+      create: { institutionId: instId, key, data: JSON.stringify(sinDup) }
+    });
+    
+    res.json({ ok: true, resultado: nuevo });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// GET resultados de juegos por grado (para docente)
+app.get("/juegos/resultados/:grado", authMiddleware, async (req, res) => {
+  try {
+    const grado = decodeURIComponent(req.params.grado);
+    const key = `juegos_resultados_${req.user.institutionId}_${grado}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } }
+    }).catch(() => null);
+    const resultados = existing ? JSON.parse(existing.data || "[]") : [];
+    res.json({ ok: true, resultados });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
 // ── INICIAR ───────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
