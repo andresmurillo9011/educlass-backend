@@ -1478,7 +1478,7 @@ Genera pasos y preguntas reales sobre "${tema}", no genéricos. Las preguntas de
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.GROQ_KEY}` },
       body: JSON.stringify({
         model: "llama-3.1-8b-instant",
-        max_tokens: 800,
+        max_tokens: tipo === "diagrama" ? 1500 : 800,
         temperature: 0.7,
         messages: [{ role: "user", content: prompt }]
       })
@@ -1488,9 +1488,25 @@ Genera pasos y preguntas reales sobre "${tema}", no genéricos. Las preguntas de
     const text = data.choices?.[0]?.message?.content || "{}";
     let juego;
     try {
-      const clean = text.replace(/```json|```/g, "").trim();
-      juego = JSON.parse(clean);
+      // Limpiar markdown y encontrar el JSON
+      let clean = text.replace(/```json|```/g, "").trim();
+      // Encontrar inicio del JSON
+      const start = clean.search(/[{[]/);
+      if (start > 0) clean = clean.slice(start);
+      // Si el JSON está incompleto, intentar cerrarlo
+      try {
+        juego = JSON.parse(clean);
+      } catch(e) {
+        // Intentar reparar JSON truncado
+        const openBraces = (clean.match(/{/g)||[]).length - (clean.match(/}/g)||[]).length;
+        const openBrackets = (clean.match(/\[/g)||[]).length - (clean.match(/\]/g)||[]).length;
+        let repaired = clean;
+        for(let i=0;i<openBrackets;i++) repaired += ']';
+        for(let i=0;i<openBraces;i++) repaired += '}';
+        juego = JSON.parse(repaired);
+      }
     } catch(e) {
+      console.error("JSON parse error:", text.slice(0,300));
       return res.status(500).json({ mensaje: "Error generando el juego, intenta de nuevo" });
     }
 
