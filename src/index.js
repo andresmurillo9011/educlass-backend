@@ -1432,7 +1432,8 @@ app.get("/notas/mis-calificaciones", authEst, async (req, res) => {
 
 app.post("/generar-juego", authMiddleware, async (req, res) => {
   try {
-    const { tipo, tema, area, grado } = req.body;
+    const { tipo, tema, area, grado, cantidad = 6 } = req.body;
+    const n = Math.min(Math.max(parseInt(cantidad)||6, 3), 15);
     if (!tipo || !tema) return res.status(400).json({ mensaje: "Tipo y tema requeridos" });
 
     const prompts = {
