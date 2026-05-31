@@ -1589,3 +1589,4 @@ app.listen(PORT, async () => {
   try { await prisma.$connect(); console.log("🗄️  PostgreSQL conectado ✅"); }
   catch (e) { console.error("❌ Error PostgreSQL:", e.message); }
 });
+// Sat May 30 21:52:05 HPS 2026
