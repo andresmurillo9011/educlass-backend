@@ -1462,7 +1462,12 @@ Responde SOLO con JSON válido:
     {"palabra":"TERMINO5","pista":"Definición clara de TERMINO5","direccion":"horizontal","fila":4,"col":0}
   ]
 }
-Las palabras en MAYÚSCULAS sin tildes ni espacios, entre 4-8 letras. Exactamente 5 palabras que se crucen entre sí.`
+Las palabras en MAYÚSCULAS sin tildes ni espacios, entre 4-8 letras. Exactamente 5 palabras que se crucen entre sí.`,
+
+      diagrama: `Genera un diagrama de flujo educativo sobre "${tema}" para ${area} grado ${grado} Colombia.
+Responde SOLO con este JSON válido sin texto adicional:
+{"pasos":[{"paso":"INICIO","titulo":"Inicio","descripcion":"","tipo":"inicio"},{"paso":"2","titulo":"Primer paso","descripcion":"Descripción del primer paso del proceso","tipo":"proceso"},{"paso":"3","titulo":"¿Pregunta de decisión?","descripcion":"Condición a evaluar","tipo":"decision","decision":{"si":"Qué ocurre si es verdadero","no":"Qué ocurre si es falso"}},{"paso":"4","titulo":"Resultado positivo","descripcion":"Consecuencia del sí","tipo":"resultado_ok"},{"paso":"5","titulo":"Resultado negativo","descripcion":"Consecuencia del no","tipo":"resultado_err"},{"paso":"FIN","titulo":"Fin","descripcion":"","tipo":"fin"}],"preguntas":[{"pregunta":"Pregunta 1 sobre el tema","opciones":["A","B","C","D"],"correcta":0},{"pregunta":"Pregunta 2","opciones":["A","B","C","D"],"correcta":1},{"pregunta":"Pregunta 3","opciones":["A","B","C","D"],"correcta":2},{"pregunta":"Pregunta 4","opciones":["A","B","C","D"],"correcta":0},{"pregunta":"Pregunta 5","opciones":["A","B","C","D"],"correcta":3}]}
+Genera pasos y preguntas reales sobre "${tema}", no genéricos. Las preguntas deben tener opciones reales del tema.`
     };
 
     const prompt = prompts[tipo];
