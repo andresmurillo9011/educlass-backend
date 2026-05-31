@@ -536,6 +536,11 @@ app.post("/tasks/calificar-ia/:entregaId", authMiddleware, async (req, res) => {
     });
     if (!assignment) return res.status(404).json({ mensaje: "Entrega no encontrada" });
 
+    // Bloquear recalificación si ya tiene nota (a menos que se fuerce)
+    if (assignment.grade != null && !req.body.forzar) {
+      return res.json({ ok: true, nota: assignment.grade, comentario: assignment.comment || "Ya calificado", yaCalificado: true });
+    }
+
     let respuesta = assignment.response || "";
     // Si no hay respuesta libre, construir el texto desde respuestasActividad
     if (!respuesta.trim()) {
@@ -596,10 +601,13 @@ INSTRUCCIONES DE EVALUACIÓN:
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.GROQ_KEY}` },
       body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
-        max_tokens: 150,
-        temperature: 0.3,
-        messages: [{ role: "user", content: prompt }]
+        model: "llama-3.3-70b-versatile",
+        max_tokens: 200,
+        temperature: 0,
+        messages: [
+          {role:"system", content:"Eres un evaluador educativo colombiano. Responde ÚNICAMENTE con JSON válido sin texto adicional ni markdown."},
+          {role: "user", content: prompt}
+        ]
       })
     });
     const data = await r.json();
