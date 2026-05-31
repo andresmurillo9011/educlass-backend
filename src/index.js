@@ -1472,6 +1472,22 @@ Responde SOLO con JSON válido:
 }
 Las palabras en MAYÚSCULAS sin tildes ni espacios, entre 4-8 letras. Exactamente 5 palabras que se crucen entre sí.`,
 
+      verdadero_falso: `Genera ${n} afirmaciones de verdadero o falso sobre "${tema}" para ${area} grado ${grado} Colombia.
+Responde SOLO con JSON válido:
+{"afirmaciones":[{"texto":"Afirmación 1 sobre el tema","respuesta":true,"explicacion":"Por qué es verdadera"},{"texto":"Afirmación 2 sobre el tema","respuesta":false,"explicacion":"Por qué es falsa"}]}
+Exactamente ${n} afirmaciones. Mezcla verdaderas y falsas. Las explicaciones deben ser educativas.`,
+
+      ahorcado: `Genera ${n} palabras para juego de ahorcado sobre "${tema}" para ${area} grado ${grado} Colombia.
+Responde SOLO con JSON válido:
+{"palabras":[{"palabra":"FOTOSINTESIS","pista":"Proceso por el cual las plantas producen su alimento usando la luz solar"},{"palabra":"MITOCONDRIA","pista":"Organelo celular conocido como la central energética de la célula"}]}
+Palabras en MAYÚSCULAS sin tildes ni espacios, entre 5-12 letras. Exactamente ${n} palabras con pistas claras.`,
+
+      millonario: `Genera ${n} preguntas estilo "¿Quién quiere ser millonario?" sobre "${tema}" para ${area} grado ${grado} Colombia.
+Dificultad progresiva: las primeras fáciles, las últimas difíciles.
+Responde SOLO con JSON válido:
+{"preguntas":[{"nivel":1,"pregunta":"Pregunta fácil","opciones":["A: Opción correcta","B: Opción incorrecta","C: Opción incorrecta","D: Opción incorrecta"],"correcta":0,"premio":"$100"},{"nivel":2,"pregunta":"Pregunta media","opciones":["A: Incorrecta","B: Correcta","C: Incorrecta","D: Incorrecta"],"correcta":1,"premio":"$200"}]}
+Exactamente ${n} preguntas con 4 opciones cada una. El índice "correcta" es 0-3. Premios progresivos.`,
+
       diagrama: `Genera un diagrama de flujo educativo sobre "${tema}" para ${area} grado ${grado} Colombia.
 Responde SOLO con este JSON válido sin texto adicional:
 {"pasos":[{"paso":"INICIO","titulo":"Inicio","descripcion":"","tipo":"inicio"},{"paso":"2","titulo":"Primer paso","descripcion":"Descripción del primer paso del proceso","tipo":"proceso"},{"paso":"3","titulo":"¿Pregunta de decisión?","descripcion":"Condición a evaluar","tipo":"decision","decision":{"si":"Qué ocurre si es verdadero","no":"Qué ocurre si es falso"}},{"paso":"4","titulo":"Resultado positivo","descripcion":"Consecuencia del sí","tipo":"resultado_ok"},{"paso":"5","titulo":"Resultado negativo","descripcion":"Consecuencia del no","tipo":"resultado_err"},{"paso":"FIN","titulo":"Fin","descripcion":"","tipo":"fin"}],"preguntas":[{"pregunta":"Pregunta 1 sobre el tema","opciones":["A","B","C","D"],"correcta":0},{"pregunta":"Pregunta 2","opciones":["A","B","C","D"],"correcta":1},{"pregunta":"Pregunta 3","opciones":["A","B","C","D"],"correcta":2},{"pregunta":"Pregunta 4","opciones":["A","B","C","D"],"correcta":0},{"pregunta":"Pregunta 5","opciones":["A","B","C","D"],"correcta":3}]}
