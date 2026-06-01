@@ -1432,8 +1432,7 @@ app.get("/notas/mis-calificaciones", authEst, async (req, res) => {
 
 app.post("/generar-juego", authMiddleware, async (req, res) => {
   try {
-    const { tipo, tema, area, grado, cantidad = 6 } = req.body;
-    const n = Math.min(Math.max(parseInt(cantidad)||6, 3), 15);
+    const { tipo, tema, area, grado } = req.body;
     if (!tipo || !tema) return res.status(400).json({ mensaje: "Tipo y tema requeridos" });
 
     const prompts = {
@@ -1492,23 +1491,7 @@ Exactamente ${n} preguntas con 4 opciones cada una. El índice "correcta" es 0-3
       diagrama: `Genera un diagrama de flujo educativo sobre "${tema}" para ${area} grado ${grado} Colombia.
 Responde SOLO con este JSON válido sin texto adicional:
 {"pasos":[{"paso":"INICIO","titulo":"Inicio","descripcion":"","tipo":"inicio"},{"paso":"2","titulo":"Primer paso","descripcion":"Descripción del primer paso del proceso","tipo":"proceso"},{"paso":"3","titulo":"¿Pregunta de decisión?","descripcion":"Condición a evaluar","tipo":"decision","decision":{"si":"Qué ocurre si es verdadero","no":"Qué ocurre si es falso"}},{"paso":"4","titulo":"Resultado positivo","descripcion":"Consecuencia del sí","tipo":"resultado_ok"},{"paso":"5","titulo":"Resultado negativo","descripcion":"Consecuencia del no","tipo":"resultado_err"},{"paso":"FIN","titulo":"Fin","descripcion":"","tipo":"fin"}],"preguntas":[{"pregunta":"Pregunta 1 sobre el tema","opciones":["A","B","C","D"],"correcta":0},{"pregunta":"Pregunta 2","opciones":["A","B","C","D"],"correcta":1},{"pregunta":"Pregunta 3","opciones":["A","B","C","D"],"correcta":2},{"pregunta":"Pregunta 4","opciones":["A","B","C","D"],"correcta":0},{"pregunta":"Pregunta 5","opciones":["A","B","C","D"],"correcta":3}]}
-Genera pasos y preguntas reales sobre "${tema}", no genéricos. Las preguntas deben tener opciones reales del tema.`,
-
-      pasapalabra: `Genera un rosco de Pasapalabra sobre "${tema}" para ${area} grado ${grado} Colombia.
-Crea exactamente 10 palabras, una para cada letra: A, B, C, D, E, F, G, H, I, J.
-Responde SOLO con JSON válido sin texto adicional:
-{"palabras":[{"letra":"A","palabra":"ALGORITMO","definicion":"Conjunto de pasos ordenados para resolver un problema"},{"letra":"B","palabra":"BIT","definicion":"Unidad mínima de información en computación"},{"letra":"C","palabra":"CPU","definicion":"Unidad central de procesamiento"},{"letra":"D","palabra":"DATO","definicion":"Información sin procesar"},{"letra":"E","palabra":"ETHERNET","definicion":"Tecnología de red local más usada"},{"letra":"F","palabra":"FIRMWARE","definicion":"Software permanente en hardware"},{"letra":"G","palabra":"GRAFICA","definicion":"Representación visual de información"},{"letra":"H","palabra":"HARDWARE","definicion":"Componentes físicos del computador"},{"letra":"I","palabra":"INTERNET","definicion":"Red mundial de computadores"},{"letra":"J","palabra":"JAVA","definicion":"Lenguaje de programación orientado a objetos"}]}
-OBLIGATORIO: cada palabra DEBE empezar exactamente con su letra. Palabras en MAYÚSCULAS sin tildes.`,
-
-      ruleta: `Genera 6 categorías con preguntas para ruleta educativa sobre "${tema}" para ${area} grado ${grado} Colombia.
-Responde SOLO con JSON válido sin texto adicional:
-{"categorias":[{"nombre":"Conceptos","color":"#3b82f6","preguntas":[{"pregunta":"¿Qué es X?","opciones":["Opción A","Opción B","Opción C","Opción D"],"correcta":0},{"pregunta":"¿Cuál define Y?","opciones":["A","B","C","D"],"correcta":2}]},{"nombre":"Ejemplos","color":"#10b981","preguntas":[{"pregunta":"¿Ejemplo de X?","opciones":["A","B","C","D"],"correcta":1},{"pregunta":"¿NO es ejemplo?","opciones":["A","B","C","D"],"correcta":3}]}]}
-Exactamente 6 categorías con 2 preguntas cada una. Preguntas y opciones reales sobre "${tema}".`,
-
-      memoria: `Genera ${n} pares de tarjetas de memoria sobre "${tema}" para ${area} grado ${grado} Colombia.
-Responde SOLO con JSON válido sin texto adicional:
-{"pares":[{"id":1,"termino":"Fotosíntesis","definicion":"Proceso por el que las plantas producen energía con luz solar"},{"id":2,"termino":"Cloroplasto","definicion":"Organelo donde ocurre la fotosíntesis"}]}
-Exactamente ${n} pares. Términos cortos (1-3 palabras), definiciones en máximo 10 palabras.`
+Genera pasos y preguntas reales sobre "${tema}", no genéricos. Las preguntas deben tener opciones reales del tema.`
     };
 
     const prompt = prompts[tipo];
