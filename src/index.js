@@ -1,4 +1,9 @@
 require("dotenv").config();
+// ⚠️ MIGRACIÓN REQUERIDA: Agrega estos campos a tu schema.prisma en el modelo Task:
+//   cerrarEn  DateTime?   // fecha/hora de cierre automático de la actividad
+//   periodoId String?     // ID del período de notas al que pertenece
+// Luego ejecuta: npx prisma migrate dev --name add_cerrar_periodo
+// O en Neon (producción): npx prisma db push
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
@@ -341,10 +346,11 @@ app.delete("/clase/:id", authMiddleware, async (req, res) => {
 // ── TAREAS ────────────────────────────────────────────
 app.post("/tasks", authMiddleware, async (req, res) => {
   try {
-    const { titulo, descripcion, tipo, actividad, area, grado, fechaEntrega, asignarGrado, estudiantesIds, materialRef } = req.body;
+    const { titulo, descripcion, tipo, actividad, area, grado, fechaEntrega, asignarGrado, estudiantesIds, materialRef, periodoId, cerrarEn } = req.body;
     if (!titulo) return res.status(400).json({ mensaje: "Título requerido" });
 
     let ids = Array.isArray(estudiantesIds) ? [...estudiantesIds] : [];
+    const gradoFinal = grado || asignarGrado || "";
     if (asignarGrado && asignarGrado !== "manual") {
       const ests = await prisma.student.findMany({
         where: { institutionId: req.user.institutionId, OR: [{ grade: asignarGrado }, { grade: asignarGrado.replace("°", "") }, { grade: asignarGrado + "°" }] },
@@ -356,12 +362,39 @@ app.post("/tasks", authMiddleware, async (req, res) => {
     const tarea = await prisma.task.create({
       data: {
         title: titulo, description: descripcion || "", materialRef: materialRef || "", type: tipo || "taller",
-        area, grade: grado || asignarGrado || "", dueDate: fechaEntrega ? new Date(fechaEntrega) : null,
+        area, grade: gradoFinal, dueDate: fechaEntrega ? new Date(fechaEntrega) : null,
         activity: actividad ? JSON.stringify(actividad) : null, userId: req.user.id, institutionId: req.user.institutionId,
+        cerrarEn: cerrarEn ? new Date(cerrarEn) : null,
+        periodoId: periodoId || null,
         assignments: { create: ids.map(studentId => ({ studentId, status: "pending" })) }
       },
       include: { _count: { select: { assignments: true } } }
     });
+
+    // Si viene periodoId, registrar automáticamente la actividad en ese período de notas
+    if (periodoId) {
+      try {
+        const key = `periodos_${req.user.id}_notas`;
+        const existing = await prisma.notaClase.findUnique({
+          where: { institutionId_key: { institutionId: req.user.institutionId, key } }
+        }).catch(() => null);
+        if (existing) {
+          const periodos = JSON.parse(existing.data || "[]");
+          const pIdx = periodos.findIndex(p => p.id === periodoId);
+          if (pIdx !== -1) {
+            if (!periodos[pIdx].actividades) periodos[pIdx].actividades = [];
+            if (!periodos[pIdx].actividades.includes(titulo)) {
+              periodos[pIdx].actividades.push(titulo);
+              await prisma.notaClase.update({
+                where: { institutionId_key: { institutionId: req.user.institutionId, key } },
+                data: { data: JSON.stringify(periodos), updatedAt: new Date() }
+              });
+            }
+          }
+        }
+      } catch(e) { console.error("Error registrando actividad en período:", e.message); }
+    }
+
     res.json({ ok: true, tarea: { ...tarea, totalEstudiantes: tarea._count.assignments }, mensaje: "Tarea creada ✅" });
   } catch (e) { res.status(500).json({ mensaje: e.message }); }
 });
@@ -669,11 +702,37 @@ app.delete("/tasks/:id", authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ mensaje: e.message }); }
 });
 
+// PATCH: cerrar/abrir actividad (establece cerrarEn)
+app.patch("/tasks/:id/cerrar", authMiddleware, async (req, res) => {
+  try {
+    const { cerrar, cerrarEn } = req.body; // cerrar=true cierra ahora; cerrarEn=fecha específica
+    const fechaCierre = cerrar ? new Date() : (cerrarEn ? new Date(cerrarEn) : null);
+    const tarea = await prisma.task.update({
+      where: { id: req.params.id, userId: req.user.id },
+      data: { cerrarEn: fechaCierre }
+    });
+    res.json({ ok: true, tarea, mensaje: cerrar ? "Actividad cerrada ✅" : cerrarEn ? "Cierre programado ✅" : "Actividad abierta ✅" });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// PATCH: asignar tarea a un período de notas
+app.patch("/tasks/:id/periodo", authMiddleware, async (req, res) => {
+  try {
+    const { periodoId } = req.body;
+    await prisma.task.update({ where: { id: req.params.id, userId: req.user.id }, data: { periodoId: periodoId || null } });
+    res.json({ ok: true, mensaje: "Período asignado ✅" });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
 // ── TAREAS ESTUDIANTE ─────────────────────────────────
 app.get("/tasks/mis-tareas-estudiante", authEst, async (req, res) => {
   try {
     const student = req.student;
     const ahora = new Date();
+    // Normalizar grado: quita tildes, grados, espacios — fix para Santiago y similares
+    const gradoNorm = g => (g||"").toLowerCase().replace(/[°oa\s]/g,"").trim().replace("dec","10").replace("once","11");
+
+    const estGrado = gradoNorm(student.grade);
 
     // 1. Tareas asignadas directamente al estudiante (via Assignment)
     const assignments = await prisma.assignment.findMany({
@@ -681,43 +740,81 @@ app.get("/tasks/mis-tareas-estudiante", authEst, async (req, res) => {
       include: { task: true },
       orderBy: { createdAt: "desc" }
     });
-    const tareasAsignadas = assignments.map(a => ({
-      id: a.task.id, titulo: a.task.title, descripcion: a.task.description,
-      tipo: a.task.type, area: a.task.area, grado: a.task.grade,
-      fechaEntrega: a.task.dueDate, actividad: a.task.activity,
-      entregada: a.status !== "pending",
-      vencida: a.task.dueDate && new Date(a.task.dueDate) < ahora && a.status === "pending",
-      calificacion: a.grade, comentario: a.comment || "", entregaId: a.id
-    }));
+    const tareasAsignadas = assignments
+      .filter(a => a.task)
+      .filter(a => {
+        // Ocultar si tiene cierre y ya pasó y no fue entregada
+        if (a.task.cerrarEn && new Date(a.task.cerrarEn) < ahora && a.status === "pending") return false;
+        return true;
+      })
+      .map(a => ({
+        id: a.task.id, titulo: a.task.title, descripcion: a.task.description,
+        materialRef: a.task.materialRef || "",
+        tipo: a.task.type, area: a.task.area, grado: a.task.grade,
+        fechaEntrega: a.task.dueDate, cerrarEn: a.task.cerrarEn || null,
+        actividad: a.task.activity,
+        entregada: a.status !== "pending",
+        vencida: a.task.dueDate && new Date(a.task.dueDate) < ahora && a.status === "pending",
+        calificacion: a.grade, comentario: a.comment || "", entregaId: a.id,
+        periodoId: a.task.periodoId || null
+      }));
 
-    // 2. Tareas por grado de la institución (sin assignment directo)
-    const tareasGrado = await prisma.task.findMany({
-      where: {
-        institutionId: student.institutionId,
-        grade: student.grade,
-
-      },
+    // 2. Tareas por grado con matching flexible (fix para estudiantes nuevos o sin assignment)
+    const todasTareasInst = await prisma.task.findMany({
+      where: { institutionId: student.institutionId },
       orderBy: { createdAt: "desc" }
     });
 
-    // Combinar evitando duplicados
     const idsAsignadas = new Set(tareasAsignadas.map(t => t.id));
-    const tareasGradoExtra = tareasGrado
-      .filter(t => !idsAsignadas.has(t.id))
-      .map(t => {
-        return {
-          id: t.id, titulo: t.title, descripcion: t.description,
-          materialRef: t.materialRef || "",
-          tipo: t.type, area: t.area, grado: t.grade,
-          fechaEntrega: t.dueDate, actividad: t.activity,
-          entregada: false,
-          vencida: t.dueDate && new Date(t.dueDate) < ahora,
-          calificacion: null, comentario: "", entregaId: null
-        };
-      });
+    const tareasGradoExtra = todasTareasInst
+      .filter(t => {
+        if (idsAsignadas.has(t.id)) return false;
+        // Matching flexible de grado
+        const tGrado = gradoNorm(t.grade);
+        if (tGrado !== estGrado && t.grade !== student.grade) return false;
+        // Ocultar si tiene cierre y ya pasó
+        if (t.cerrarEn && new Date(t.cerrarEn) < ahora) return false;
+        return true;
+      })
+      .map(t => ({
+        id: t.id, titulo: t.title, descripcion: t.description,
+        materialRef: t.materialRef || "",
+        tipo: t.type, area: t.area, grado: t.grade,
+        fechaEntrega: t.dueDate, cerrarEn: t.cerrarEn || null,
+        actividad: t.activity,
+        entregada: false,
+        vencida: t.dueDate && new Date(t.dueDate) < ahora,
+        calificacion: null, comentario: "", entregaId: null,
+        periodoId: t.periodoId || null
+      }));
 
     res.json({ tareas: [...tareasAsignadas, ...tareasGradoExtra] });
   } catch (e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// PATCH: guardar progreso parcial del estudiante (autoguardado)
+app.patch("/tasks/progreso/:tareaId", authEst, async (req, res) => {
+  try {
+    const { respuestasActividad, respuesta } = req.body;
+    const tareaId = req.params.tareaId;
+    let assignment = await prisma.assignment.findFirst({ where: { taskId: tareaId, studentId: req.student.id } });
+    if (!assignment) {
+      const tareaExiste = await prisma.task.findFirst({ where: { id: tareaId, institutionId: req.student.institutionId } });
+      if (!tareaExiste) return res.status(404).json({ mensaje: "Tarea no encontrada" });
+      assignment = await prisma.assignment.create({ data: { taskId: tareaId, studentId: req.student.id, status: "pending" } });
+    }
+    // Solo guardar si aún no fue entregada
+    if (assignment.status === "pending") {
+      await prisma.assignment.update({
+        where: { id: assignment.id },
+        data: {
+          responses: JSON.stringify(respuestasActividad || {}),
+          response: respuesta || assignment.response || ""
+        }
+      });
+    }
+    res.json({ ok: true, guardado: true });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
 
 app.post("/tasks/entregar", authEst, uploadEnt.single("archivo"), async (req, res) => {
@@ -760,6 +857,12 @@ app.post("/tasks/entregar", authEst, uploadEnt.single("archivo"), async (req, re
       where: { id: assignment.id },
       data: { response: respuesta || "", responses: JSON.stringify(respAct || {}), status: autoGraded ? "graded" : "submitted", submittedAt: new Date(), grade, autoGraded, detail, ...(autoGraded ? { gradedAt: new Date() } : {}), ...(req.file ? { fileName: req.file.originalname } : {}) }
     });
+
+    // Auto-registrar nota en el período si la tarea tiene periodoId y fue auto-calificada
+    if (autoGraded && grade != null && assignment.task.periodoId && assignment.task.userId) {
+      await autoAsignarNota(assignment.task.userId, assignment.task.institutionId, assignment.task, req.student.id, grade);
+    }
+
     res.json({ ok: true, mensaje: "Tarea entregada ✅", autoCalificada: autoGraded, notaAuto: grade, resultadoDetalle: detail });
   } catch (e) { res.status(500).json({ mensaje: e.message }); }
 });
@@ -1491,7 +1594,27 @@ Exactamente ${n} preguntas con 4 opciones cada una. El índice "correcta" es 0-3
       diagrama: `Genera un diagrama de flujo educativo sobre "${tema}" para ${area} grado ${grado} Colombia.
 Responde SOLO con este JSON válido sin texto adicional:
 {"pasos":[{"paso":"INICIO","titulo":"Inicio","descripcion":"","tipo":"inicio"},{"paso":"2","titulo":"Primer paso","descripcion":"Descripción del primer paso del proceso","tipo":"proceso"},{"paso":"3","titulo":"¿Pregunta de decisión?","descripcion":"Condición a evaluar","tipo":"decision","decision":{"si":"Qué ocurre si es verdadero","no":"Qué ocurre si es falso"}},{"paso":"4","titulo":"Resultado positivo","descripcion":"Consecuencia del sí","tipo":"resultado_ok"},{"paso":"5","titulo":"Resultado negativo","descripcion":"Consecuencia del no","tipo":"resultado_err"},{"paso":"FIN","titulo":"Fin","descripcion":"","tipo":"fin"}],"preguntas":[{"pregunta":"Pregunta 1 sobre el tema","opciones":["A","B","C","D"],"correcta":0},{"pregunta":"Pregunta 2","opciones":["A","B","C","D"],"correcta":1},{"pregunta":"Pregunta 3","opciones":["A","B","C","D"],"correcta":2},{"pregunta":"Pregunta 4","opciones":["A","B","C","D"],"correcta":0},{"pregunta":"Pregunta 5","opciones":["A","B","C","D"],"correcta":3}]}
-Genera pasos y preguntas reales sobre "${tema}", no genéricos. Las preguntas deben tener opciones reales del tema.`
+Genera pasos y preguntas reales sobre "${tema}", no genéricos. Las preguntas deben tener opciones reales del tema.`,
+
+      quiz_cronometrado: `Genera ${n} preguntas de quiz cronometrado sobre "${tema}" para ${area} grado ${grado}° Colombia.
+Cada pregunta tiene 20 segundos. Responde SOLO con JSON válido:
+{"preguntas":[{"pregunta":"¿Pregunta clara?","opciones":["A: Correcta","B: Incorrecta","C: Incorrecta","D: Incorrecta"],"correcta":0,"segundos":20,"puntos":100},{"pregunta":"Pregunta 2","opciones":["A: Incorrecta","B: Correcta","C: Incorrecta","D: Incorrecta"],"correcta":1,"segundos":20,"puntos":200}]}
+Exactamente ${n} preguntas. Puntos: 100 fáciles, 200 medias, 300 difíciles. Sin texto extra.`,
+
+      linea_tiempo: `Genera una línea de tiempo educativa sobre "${tema}" para ${area} grado ${grado}° Colombia.
+Responde SOLO con JSON válido:
+{"titulo":"Línea de tiempo: ${tema}","eventos":[{"anio":"1810","titulo":"Nombre evento","descripcion":"Descripción breve educativa","importancia":"alta"},{"anio":"1819","titulo":"Evento 2","descripcion":"Descripción","importancia":"media"}],"preguntas":[{"pregunta":"¿En qué año ocurrió X?","opciones":["1810","1819","1830","1850"],"correcta":0},{"pregunta":"¿Cuál evento fue primero?","opciones":["Evento A","Evento B","Evento C","Evento D"],"correcta":1}]}
+Exactamente 6 eventos cronológicos reales sobre ${tema} y 3 preguntas. Sin texto extra.`,
+
+      mapa_conceptual: `Genera un mapa conceptual sobre "${tema}" para ${area} grado ${grado}° Colombia.
+Responde SOLO con JSON válido:
+{"concepto_central":"${tema}","ramas":[{"rama":"Categoría 1","color":"#3B82F6","conceptos":["Concepto A","Concepto B","Concepto C"],"relacion":"es parte de"},{"rama":"Categoría 2","color":"#10B981","conceptos":["Concepto D","Concepto E"],"relacion":"incluye"},{"rama":"Categoría 3","color":"#F59E0B","conceptos":["Concepto F","Concepto G"],"relacion":"se relaciona con"},{"rama":"Categoría 4","color":"#EF4444","conceptos":["Concepto H","Concepto I"],"relacion":"produce"}],"preguntas":[{"pregunta":"¿A qué rama pertenece el concepto X?","opciones":["Categoría 1","Categoría 2","Categoría 3","Categoría 4"],"correcta":0},{"pregunta":"¿Cuál concepto NO está en Categoría 2?","opciones":["Concepto D","Concepto E","Concepto A","Concepto D"],"correcta":2},{"pregunta":"¿Qué relación tiene Categoría 3 con el tema?","opciones":["es parte de","incluye","se relaciona con","produce"],"correcta":2}]}
+Exactamente 4 ramas con conceptos reales de "${tema}" y 3 preguntas. Sin texto extra.`,
+
+      debate_ia: `Genera un escenario de debate educativo sobre "${tema}" para ${area} grado ${grado}° Colombia.
+Responde SOLO con JSON válido:
+{"tema_debate":"${tema}","postura_a":{"nombre":"A FAVOR","argumentos":["Argumento sólido 1","Argumento sólido 2","Argumento sólido 3"],"datos":"Estadística o dato real que apoya la postura"},"postura_b":{"nombre":"EN CONTRA","argumentos":["Contraargumento 1","Contraargumento 2","Contraargumento 3"],"datos":"Estadística o dato real que apoya la postura"},"preguntas_reflexion":[{"pregunta":"¿Cuál es el argumento más convincente de la postura A?","tipo":"abierta"},{"pregunta":"¿Con cuál postura estás de acuerdo y por qué?","tipo":"abierta"},{"pregunta":"¿Qué solución intermedia propondrías?","tipo":"abierta"}],"vocabulario":["término1","término2","término3","término4","término5"]}
+Contexto colombiano real. Argumentos educativos y equilibrados. Sin texto extra.`
     };
 
     const prompt = prompts[tipo];
