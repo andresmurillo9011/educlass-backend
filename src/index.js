@@ -730,7 +730,21 @@ app.get("/tasks/mis-tareas-estudiante", authEst, async (req, res) => {
     const student = req.student;
     const ahora = new Date();
     // Normalizar grado: quita tildes, grados, espacios — fix para Santiago y similares
-    const gradoNorm = g => (g||"").toLowerCase().replace(/[°oa\s]/g,"").trim().replace("dec","10").replace("once","11");
+    const gradoNorm = g => {
+      let s = (g||"").toLowerCase().trim();
+      s = s.normalize("NFD").replace(/[\u0300-\u036f]/g,""); // quitar tildes
+      s = s.replace(/[°º\.]/g,"").trim();                     // quitar grado/punto
+      s = s.replace(/^grado\s*/i,"").trim();                   // quitar "grado "
+      s = s.replace(/\s+/g,"");                                // quitar espacios
+      // Normalizar nombres de grado
+      s = s.replace(/^sexto$|^6[ao]?$/,"6");
+      s = s.replace(/^septimo$|^7[ao]?$/,"7");
+      s = s.replace(/^octavo$|^8[ao]?$/,"8");
+      s = s.replace(/^noveno$|^9[ao]?$/,"9");
+      s = s.replace(/^decimo$|^10[ao]?$/,"10");
+      s = s.replace(/^once$|^11[ao]?$/,"11");
+      return s;
+    };
 
     const estGrado = gradoNorm(student.grade);
 
@@ -771,7 +785,7 @@ app.get("/tasks/mis-tareas-estudiante", authEst, async (req, res) => {
         if (idsAsignadas.has(t.id)) return false;
         // Matching flexible de grado
         const tGrado = gradoNorm(t.grade);
-        if (tGrado !== estGrado && t.grade !== student.grade) return false;
+        if (tGrado !== estGrado) return false;
         // Ocultar si tiene cierre y ya pasó
         if (t.cerrarEn && new Date(t.cerrarEn) < ahora) return false;
         return true;
@@ -1535,8 +1549,9 @@ app.get("/notas/mis-calificaciones", authEst, async (req, res) => {
 
 app.post("/generar-juego", authMiddleware, async (req, res) => {
   try {
-    const { tipo, tema, area, grado } = req.body;
+    const { tipo, tema, area, grado, cantidad } = req.body;
     if (!tipo || !tema) return res.status(400).json({ mensaje: "Tipo y tema requeridos" });
+    const n = parseInt(cantidad) || 5;
 
     const prompts = {
       sopa: `Genera una sopa de letras educativa sobre "${tema}" para ${area} grado ${grado}° Colombia.
