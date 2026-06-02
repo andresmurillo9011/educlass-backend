@@ -1,17 +1,14 @@
 // schema.prisma — VERSIÓN LOCAL con SQLite
 // Copia este archivo a: educlass-backend/prisma/schema.prisma
 // (reemplaza el original que usa postgresql)
-
 generator client {
   provider = "prisma-client-js"
 }
-
 // CAMBIADO: sqlite en vez de postgresql
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-
 model Institution {
   id        String    @id @default(uuid())
   name      String    @unique
@@ -25,7 +22,6 @@ model Institution {
   notas     NotaClase[]
   @@map("institutions")
 }
-
 model User {
   id            String      @id @default(uuid())
   name          String
@@ -43,7 +39,6 @@ model User {
   updatedAt     DateTime    @updatedAt
   @@map("users")
 }
-
 model Student {
   id            String      @id @default(uuid())
   name          String
@@ -56,7 +51,6 @@ model Student {
   createdAt     DateTime    @default(now())
   @@map("students")
 }
-
 model Class {
   id        String   @id @default(uuid())
   content   String
@@ -66,27 +60,27 @@ model Class {
   createdAt DateTime @default(now())
   @@map("classes")
 }
-
 model Task {
-  id            String      @id @default(uuid())
+  id            String       @id @default(uuid())
   title         String
   description   String?
-  type          String      @default("taller")
+  type          String       @default("taller")
   area          String?
   grade         String?
   dueDate       DateTime?
-  activity      String?     // SQLite: String en vez de Json
-  materialRef   String?     // Texto o link de referencia para el estudiante
-  code          String      @unique @default(cuid())
+  activity      String?      // SQLite: String en vez de Json
+  materialRef   String?      // Texto o link de referencia para el estudiante
+  code          String       @unique @default(cuid())
+  cerrarEn      DateTime?    // Fecha/hora de cierre automático de la actividad
+  periodoId     String?      // ID del período de notas al que pertenece
   userId        String
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   institutionId String
-  institution   Institution @relation(fields: [institutionId], references: [id])
+  institution   Institution  @relation(fields: [institutionId], references: [id])
   assignments   Assignment[]
-  createdAt     DateTime    @default(now())
+  createdAt     DateTime     @default(now())
   @@map("tasks")
 }
-
 model Assignment {
   id          String    @id @default(uuid())
   status      String    @default("pending")
@@ -107,7 +101,6 @@ model Assignment {
   @@unique([taskId, studentId])
   @@map("assignments")
 }
-
 model Diario {
   id            String      @id @default(uuid())
   key           String
@@ -120,7 +113,6 @@ model Diario {
   @@unique([institutionId, key])
   @@map("diarios")
 }
-
 model NotaClase {
   id            String      @id @default(uuid())
   key           String
