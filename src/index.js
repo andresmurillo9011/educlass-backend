@@ -1533,10 +1533,22 @@ app.get("/notas/mis-calificaciones", authEst, async (req, res) => {
 //  JUEGOS MENTALES
 // ══════════════════════════════════════════════════════
 
+
+app.get("/mis-juegos/todos", authMiddleware, async (req, res) => {
+  try {
+    const juegos = await prisma.diario.findMany({
+      where: { institutionId: req.user.institutionId, key: { startsWith: "juego_" } },
+      orderBy: { createdAt: "desc" }
+    });
+    const lista = juegos.map(j => { try { const data = JSON.parse(j.data); return { id: j.id, ...data, creadoEn: j.createdAt }; } catch { return { id: j.id, creadoEn: j.createdAt }; } });
+    res.json({ ok: true, juegos: lista });
+  } catch(e) { res.status(500).json({ mensaje: "Error", error: e.message }); }
+});
 app.post("/generar-juego", authMiddleware, async (req, res) => {
   try {
-    const { tipo, tema, area, grado } = req.body;
+    const { tipo, tema, area, grado, cantidad } = req.body;
     if (!tipo || !tema) return res.status(400).json({ mensaje: "Tipo y tema requeridos" });
+    const n = parseInt(cantidad) || 5;
 
     const prompts = {
       sopa: `Genera una sopa de letras educativa sobre "${tema}" para ${area} grado ${grado}° Colombia.
