@@ -1554,10 +1554,10 @@ app.post("/generar-juego", authMiddleware, async (req, res) => {
       sopa: `Genera una sopa de letras educativa sobre "${tema}" para ${area} grado ${grado}° Colombia.
 Responde SOLO con JSON válido:
 {
-  "palabras": ["PALABRA1","PALABRA2","PALABRA3","PALABRA4","PALABRA5","PALABRA6","PALABRA7","PALABRA8"],
-  "pistas": ["Definición o pista de PALABRA1","pista de PALABRA2","pista de PALABRA3","pista de PALABRA4","pista de PALABRA5","pista de PALABRA6","pista de PALABRA7","pista de PALABRA8"]
+  "palabras": ["PALABRA1","PALABRA2",...,"PALABRAn"],
+  "pistas": ["Definición o pista 1","pista 2",...,"pista n"]
 }
-Las palabras deben ser en MAYÚSCULAS, sin tildes, sin espacios, entre 4 y 10 letras. Exactamente 8 palabras.`,
+Las palabras deben ser en MAYÚSCULAS, sin tildes, sin espacios, entre 4 y 10 letras. Exactamente ${n} palabras.`,
 
       unir: `Genera un juego de unir definiciones sobre "${tema}" para ${area} grado ${grado}° Colombia.
 Responde SOLO con JSON válido:
