@@ -1533,31 +1533,19 @@ app.get("/notas/mis-calificaciones", authEst, async (req, res) => {
 //  JUEGOS MENTALES
 // ══════════════════════════════════════════════════════
 
-
-app.get("/mis-juegos/todos", authMiddleware, async (req, res) => {
-  try {
-    const juegos = await prisma.diario.findMany({
-      where: { institutionId: req.user.institutionId, key: { startsWith: "juego_" } },
-      orderBy: { createdAt: "desc" }
-    });
-    const lista = juegos.map(j => { try { const data = JSON.parse(j.data); return { id: j.id, ...data, creadoEn: j.createdAt }; } catch { return { id: j.id, creadoEn: j.createdAt }; } });
-    res.json({ ok: true, juegos: lista });
-  } catch(e) { res.status(500).json({ mensaje: "Error", error: e.message }); }
-});
 app.post("/generar-juego", authMiddleware, async (req, res) => {
   try {
-    const { tipo, tema, area, grado, cantidad } = req.body;
+    const { tipo, tema, area, grado } = req.body;
     if (!tipo || !tema) return res.status(400).json({ mensaje: "Tipo y tema requeridos" });
-    const n = parseInt(cantidad) || 5;
 
     const prompts = {
       sopa: `Genera una sopa de letras educativa sobre "${tema}" para ${area} grado ${grado}° Colombia.
 Responde SOLO con JSON válido:
 {
-  "palabras": ["PALABRA1","PALABRA2",...,"PALABRAn"],
-  "pistas": ["Definición o pista 1","pista 2",...,"pista n"]
+  "palabras": ["PALABRA1","PALABRA2","PALABRA3","PALABRA4","PALABRA5","PALABRA6","PALABRA7","PALABRA8"],
+  "pistas": ["Definición o pista de PALABRA1","pista de PALABRA2","pista de PALABRA3","pista de PALABRA4","pista de PALABRA5","pista de PALABRA6","pista de PALABRA7","pista de PALABRA8"]
 }
-Las palabras deben ser en MAYÚSCULAS, sin tildes, sin espacios, entre 4 y 10 letras. Exactamente ${n} palabras.`,
+Las palabras deben ser en MAYÚSCULAS, sin tildes, sin espacios, entre 4 y 10 letras. Exactamente 8 palabras.`,
 
       unir: `Genera un juego de unir definiciones sobre "${tema}" para ${area} grado ${grado}° Colombia.
 Responde SOLO con JSON válido:
@@ -1623,14 +1611,6 @@ Responde SOLO con JSON válido:
 {"concepto_central":"${tema}","ramas":[{"rama":"Categoría 1","color":"#3B82F6","conceptos":["Concepto A","Concepto B","Concepto C"],"relacion":"es parte de"},{"rama":"Categoría 2","color":"#10B981","conceptos":["Concepto D","Concepto E"],"relacion":"incluye"},{"rama":"Categoría 3","color":"#F59E0B","conceptos":["Concepto F","Concepto G"],"relacion":"se relaciona con"},{"rama":"Categoría 4","color":"#EF4444","conceptos":["Concepto H","Concepto I"],"relacion":"produce"}],"preguntas":[{"pregunta":"¿A qué rama pertenece el concepto X?","opciones":["Categoría 1","Categoría 2","Categoría 3","Categoría 4"],"correcta":0},{"pregunta":"¿Cuál concepto NO está en Categoría 2?","opciones":["Concepto D","Concepto E","Concepto A","Concepto D"],"correcta":2},{"pregunta":"¿Qué relación tiene Categoría 3 con el tema?","opciones":["es parte de","incluye","se relaciona con","produce"],"correcta":2}]}
 Exactamente 4 ramas con conceptos reales de "${tema}" y 3 preguntas. Sin texto extra.`,
 
-
-      pasapalabra: `Genera un Pasapalabra sobre "${tema}" para ${area} grado ${grado} Colombia. Responde SOLO JSON: {"letras":[{"letra":"A","pregunta":"Con A: concepto del tema","respuesta":"APALABRA","pista":"pista"},{"letra":"B","pregunta":"Con B: concepto","respuesta":"BPALABRA","pista":"pista"},{"letra":"C","pregunta":"Con C: concepto","respuesta":"CPALABRA","pista":"pista"},{"letra":"D","pregunta":"Con D: concepto","respuesta":"DPALABRA","pista":"pista"},{"letra":"E","pregunta":"Con E: concepto","respuesta":"EPALABRA","pista":"pista"},{"letra":"F","pregunta":"Con F: concepto","respuesta":"FPALABRA","pista":"pista"},{"letra":"G","pregunta":"Con G: concepto","respuesta":"GPALABRA","pista":"pista"},{"letra":"H","pregunta":"Con H: concepto","respuesta":"HPALABRA","pista":"pista"}]} 8 letras, respuestas en MAYUSCULAS sin tildes.`,
-      ruleta: `Genera preguntas para ruleta sobre "${tema}" ${area} grado ${grado} Colombia. SOLO JSON sin texto extra:
-{"categorias":[{"nombre":"Facil","color":"#22c55e","preguntas":[{"pregunta":"Pregunta facil 1 sobre ${tema}?","respuesta":"respuesta1"},{"pregunta":"Pregunta facil 2?","respuesta":"respuesta2"},{"pregunta":"Pregunta facil 3?","respuesta":"respuesta3"}]},{"nombre":"Medio","color":"#f59e0b","preguntas":[{"pregunta":"Pregunta media 1?","respuesta":"respuesta1"},{"pregunta":"Pregunta media 2?","respuesta":"respuesta2"}]},{"nombre":"Dificil","color":"#ef4444","preguntas":[{"pregunta":"Pregunta dificil 1?","respuesta":"respuesta1"},{"pregunta":"Pregunta dificil 2?","respuesta":"respuesta2"}]},{"nombre":"Comodin","color":"#8b5cf6","preguntas":[{"pregunta":"Dato curioso sobre ${tema}?","respuesta":"respuesta"}]}]}
-Usa preguntas y respuestas REALES sobre ${tema}. Sin texto adicional.`,
-      memoria: `Genera juego de memoria sobre "${tema}" ${area} grado ${grado} Colombia. SOLO JSON sin texto extra:
-{"pares":[{"id":1,"termino":"Termino1","definicion":"Definicion breve 1"},{"id":2,"termino":"Termino2","definicion":"Definicion breve 2"},{"id":3,"termino":"Termino3","definicion":"Definicion breve 3"},{"id":4,"termino":"Termino4","definicion":"Definicion breve 4"},{"id":5,"termino":"Termino5","definicion":"Definicion breve 5"},{"id":6,"termino":"Termino6","definicion":"Definicion breve 6"},{"id":7,"termino":"Termino7","definicion":"Definicion breve 7"},{"id":8,"termino":"Termino8","definicion":"Definicion breve 8"}]}
-8 pares REALES sobre "${tema}". Terminos cortos 1-3 palabras. Sin texto adicional.`,
       debate_ia: `Genera un escenario de debate educativo sobre "${tema}" para ${area} grado ${grado}° Colombia.
 Responde SOLO con JSON válido:
 {"tema_debate":"${tema}","postura_a":{"nombre":"A FAVOR","argumentos":["Argumento sólido 1","Argumento sólido 2","Argumento sólido 3"],"datos":"Estadística o dato real que apoya la postura"},"postura_b":{"nombre":"EN CONTRA","argumentos":["Contraargumento 1","Contraargumento 2","Contraargumento 3"],"datos":"Estadística o dato real que apoya la postura"},"preguntas_reflexion":[{"pregunta":"¿Cuál es el argumento más convincente de la postura A?","tipo":"abierta"},{"pregunta":"¿Con cuál postura estás de acuerdo y por qué?","tipo":"abierta"},{"pregunta":"¿Qué solución intermedia propondrías?","tipo":"abierta"}],"vocabulario":["término1","término2","término3","término4","término5"]}
