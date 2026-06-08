@@ -827,6 +827,11 @@ app.post("/tasks/entregar", authEst, uploadEnt.single("archivo"), async (req, re
       assignment = await prisma.assignment.create({ data: { taskId: tareaId, studentId: req.student.id, status: "pending" }, include: { task: true } });
     }
 
+    // ✅ VALIDAR TIEMPO LÍMITE
+    if (assignment.task.cerrarEn && new Date(assignment.task.cerrarEn) < new Date()) {
+      return res.status(403).json({ mensaje: "⏰ Esta actividad ya cerró. No se pueden recibir más entregas." });
+    }
+
     const respAct = respuestasActividad ? JSON.parse(respuestasActividad) : {};
     let grade = null, autoGraded = false, detail = null;
 
