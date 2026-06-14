@@ -1841,3 +1841,132 @@ app.delete("/galeria/:id", authMiddleware, async (req, res) => {
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ mensaje: e.message }); }
 });
+
+// ── VISITAS, LIKES Y COMENTARIOS ─────────────────────
+
+// POST /galeria/:institutionId/visita — registrar visita a la galería
+app.post("/galeria/:institutionId/visita", async (req, res) => {
+  try {
+    const key = `galeria_stats_${req.params.institutionId}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.params.institutionId, key } }
+    }).catch(() => null);
+    const stats = existing ? JSON.parse(existing.data || "{}") : {};
+    stats.visitas = (stats.visitas || 0) + 1;
+    stats.ultimaVisita = new Date().toISOString();
+    await prisma.notaClase.upsert({
+      where: { institutionId_key: { institutionId: req.params.institutionId, key } },
+      update: { data: JSON.stringify(stats), updatedAt: new Date() },
+      create: { institutionId: req.params.institutionId, key, data: JSON.stringify(stats) }
+    });
+    res.json({ ok: true, visitas: stats.visitas });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// GET /galeria/:institutionId/stats — obtener stats generales
+app.get("/galeria/:institutionId/stats", async (req, res) => {
+  try {
+    const key = `galeria_stats_${req.params.institutionId}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.params.institutionId, key } }
+    }).catch(() => null);
+    const stats = existing ? JSON.parse(existing.data || "{}") : {};
+    res.json({ ok: true, visitas: stats.visitas || 0 });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// POST /galeria/:institutionId/foto/:fotoId/like — toggle like en una foto
+app.post("/galeria/:institutionId/foto/:fotoId/like", async (req, res) => {
+  try {
+    const instId = req.params.institutionId;
+    const fotoId = req.params.fotoId;
+    // Guardar likes en clave separada por foto
+    const key = `galeria_likes_${instId}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: instId, key } }
+    }).catch(() => null);
+    const likes = existing ? JSON.parse(existing.data || "{}") : {};
+    likes[fotoId] = (likes[fotoId] || 0) + 1;
+    await prisma.notaClase.upsert({
+      where: { institutionId_key: { institutionId: instId, key } },
+      update: { data: JSON.stringify(likes), updatedAt: new Date() },
+      create: { institutionId: instId, key, data: JSON.stringify(likes) }
+    });
+    res.json({ ok: true, likes: likes[fotoId] });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// GET /galeria/:institutionId/likes — obtener todos los likes
+app.get("/galeria/:institutionId/likes", async (req, res) => {
+  try {
+    const key = `galeria_likes_${req.params.institutionId}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.params.institutionId, key } }
+    }).catch(() => null);
+    const likes = existing ? JSON.parse(existing.data || "{}") : {};
+    res.json({ ok: true, likes });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// POST /galeria/:institutionId/foto/:fotoId/comentar — agregar comentario
+app.post("/galeria/:institutionId/foto/:fotoId/comentar", async (req, res) => {
+  try {
+    const { nombre, texto } = req.body;
+    if (!texto || !texto.trim()) return res.status(400).json({ mensaje: "Escribe un comentario" });
+    const instId = req.params.institutionId;
+    const fotoId = req.params.fotoId;
+    const key = `galeria_comentarios_${instId}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: instId, key } }
+    }).catch(() => null);
+    const todos = existing ? JSON.parse(existing.data || "{}") : {};
+    if (!todos[fotoId]) todos[fotoId] = [];
+    const nuevo = {
+      id: require("crypto").randomUUID(),
+      nombre: (nombre || "Anónimo").slice(0,30),
+      texto: texto.trim().slice(0,300),
+      fecha: new Date().toISOString()
+    };
+    todos[fotoId].unshift(nuevo);
+    // Máximo 50 comentarios por foto
+    if (todos[fotoId].length > 50) todos[fotoId] = todos[fotoId].slice(0,50);
+    await prisma.notaClase.upsert({
+      where: { institutionId_key: { institutionId: instId, key } },
+      update: { data: JSON.stringify(todos), updatedAt: new Date() },
+      create: { institutionId: instId, key, data: JSON.stringify(todos) }
+    });
+    res.json({ ok: true, comentario: nuevo, total: todos[fotoId].length });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// GET /galeria/:institutionId/comentarios — obtener todos los comentarios
+app.get("/galeria/:institutionId/comentarios", async (req, res) => {
+  try {
+    const key = `galeria_comentarios_${req.params.institutionId}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.params.institutionId, key } }
+    }).catch(() => null);
+    const comentarios = existing ? JSON.parse(existing.data || "{}") : {};
+    res.json({ ok: true, comentarios });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// DELETE /galeria/:institutionId/comentario/:fotoId/:comentId — solo docentes
+app.delete("/galeria/:institutionId/comentario/:fotoId/:comentId", authMiddleware, async (req, res) => {
+  try {
+    const { institutionId, fotoId, comentId } = req.params;
+    const key = `galeria_comentarios_${institutionId}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId, key } }
+    }).catch(() => null);
+    if (!existing) return res.json({ ok: true });
+    const todos = JSON.parse(existing.data || "{}");
+    if (todos[fotoId]) todos[fotoId] = todos[fotoId].filter(c => c.id !== comentId);
+    await prisma.notaClase.update({
+      where: { institutionId_key: { institutionId, key } },
+      data: { data: JSON.stringify(todos), updatedAt: new Date() }
+    });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
