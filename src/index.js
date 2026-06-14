@@ -1780,10 +1780,11 @@ const uploadGaleria = multer({ storage: multer.memoryStorage(), limits: { fileSi
 app.post("/galeria", authMiddleware, uploadGaleria.single("foto"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ mensaje: "No se recibió ninguna foto" });
-    const { titulo, descripcion } = req.body;
+    const { titulo, descripcion, tipo } = req.body;
+    const resourceType = tipo === "vid" ? "video" : "image";
     const result = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
-        { folder: "edupanel_galeria", resource_type: "image" },
+        { folder: "edupanel_galeria", resource_type: resourceType },
         (err, result) => err ? reject(err) : resolve(result)
       );
       stream.end(req.file.buffer);
@@ -1796,6 +1797,7 @@ app.post("/galeria", authMiddleware, uploadGaleria.single("foto"), async (req, r
     const nueva = {
       id: uuidv4(),
       url: result.secure_url,
+      tipo: tipo === "vid" ? "video" : "imagen",
       titulo: titulo || "Sin título",
       descripcion: descripcion || "",
       autor: req.user.nombre || req.user.email,
