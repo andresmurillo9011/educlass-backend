@@ -827,11 +827,6 @@ app.post("/tasks/entregar", authEst, uploadEnt.single("archivo"), async (req, re
       assignment = await prisma.assignment.create({ data: { taskId: tareaId, studentId: req.student.id, status: "pending" }, include: { task: true } });
     }
 
-    // ✅ VALIDAR TIEMPO LÍMITE
-    if (assignment.task.cerrarEn && new Date(assignment.task.cerrarEn) < new Date()) {
-      return res.status(403).json({ mensaje: "⏰ Esta actividad ya cerró. No se pueden recibir más entregas." });
-    }
-
     const respAct = respuestasActividad ? JSON.parse(respuestasActividad) : {};
     let grade = null, autoGraded = false, detail = null;
 
@@ -1771,3 +1766,76 @@ app.listen(PORT, async () => {
   catch (e) { console.error("❌ Error PostgreSQL:", e.message); }
 });
 // Sat May 30 21:52:05 HPS 2026
+
+// ── GALERÍA DE FOTOS ──────────────────────────────────
+const cloudinary = require("cloudinary").v2;
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+const uploadGaleria = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+// POST /galeria — solo docentes, sube foto a Cloudinary
+app.post("/galeria", authMiddleware, uploadGaleria.single("foto"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ mensaje: "No se recibió ninguna foto" });
+    const { titulo, descripcion } = req.body;
+    const result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: "edupanel_galeria", resource_type: "image" },
+        (err, result) => err ? reject(err) : resolve(result)
+      );
+      stream.end(req.file.buffer);
+    });
+    const key = `galeria_${req.user.institutionId}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } }
+    }).catch(() => null);
+    const fotos = existing ? JSON.parse(existing.data || "[]") : [];
+    const nueva = {
+      id: uuidv4(),
+      url: result.secure_url,
+      titulo: titulo || "Sin título",
+      descripcion: descripcion || "",
+      autor: req.user.nombre || req.user.email,
+      fecha: new Date().toISOString(),
+    };
+    fotos.unshift(nueva);
+    await prisma.notaClase.upsert({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } },
+      update: { data: JSON.stringify(fotos), updatedAt: new Date() },
+      create: { institutionId: req.user.institutionId, key, data: JSON.stringify(fotos) }
+    });
+    res.json({ ok: true, foto: nueva });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// GET /galeria/:institutionId — público
+app.get("/galeria/:institutionId", async (req, res) => {
+  try {
+    const key = `galeria_${req.params.institutionId}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.params.institutionId, key } }
+    }).catch(() => null);
+    const fotos = existing ? JSON.parse(existing.data || "[]") : [];
+    res.json({ ok: true, fotos });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
+
+// DELETE /galeria/:id — solo docentes
+app.delete("/galeria/:id", authMiddleware, async (req, res) => {
+  try {
+    const key = `galeria_${req.user.institutionId}`;
+    const existing = await prisma.notaClase.findUnique({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } }
+    }).catch(() => null);
+    if (!existing) return res.status(404).json({ mensaje: "Galería vacía" });
+    const fotos = JSON.parse(existing.data || "[]").filter(f => f.id !== req.params.id);
+    await prisma.notaClase.update({
+      where: { institutionId_key: { institutionId: req.user.institutionId, key } },
+      data: { data: JSON.stringify(fotos), updatedAt: new Date() }
+    });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ mensaje: e.message }); }
+});
