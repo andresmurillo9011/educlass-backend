@@ -1012,6 +1012,74 @@ app.post("/exportar-word", authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ mensaje: e.message }); }
 });
 
+// ── EXPORTAR PDF ───────────────────────────────────────
+app.post("/exportar-pdf", authMiddleware, async (req, res) => {
+  try {
+    const { contenido, institucion, docente, area, grado, tema, duracion, logoPath, banderaPath, cargo, ciudad, nivelEducativo } = req.body;
+    const gradoN = parseInt(grado) || 0;
+    const nivelLabel = nivelEducativo === "preescolar" ? "Preescolar" : nivelEducativo === "primaria" ? "Primaria" : nivelEducativo === "media_tecnica" ? "Media Técnica" : nivelEducativo === "bachillerato" ? "Bachillerato" : gradoN <= 5 ? "Primaria" : gradoN <= 9 ? "Bachillerato" : "Media/Bachillerato";
+    const PDFDocument = require("pdfkit");
+    const bloques = {}; let secActual = null;
+    for (const linea of contenido.split("\n")) { const m = linea.match(/^===(\w+)===/); if (m) { secActual = m[1]; bloques[secActual] = []; continue; } if (secActual) bloques[secActual].push(linea); }
+    if (!Object.keys(bloques).length) {
+      const lineas = contenido.split("\n"); const total = lineas.length; const chunk = Math.floor(total / 5);
+      bloques["APERTURA"] = lineas.slice(0, chunk);
+      bloques["SABERES_PREVIOS"] = lineas.slice(chunk, chunk * 2);
+      bloques["DESARROLLO"] = lineas.slice(chunk * 2, chunk * 3);
+      bloques["RETROALIMENTACION"] = lineas.slice(chunk * 3, chunk * 4);
+      bloques["CIERRE"] = lineas.slice(chunk * 4);
+      bloques["TALLER"] = lineas.slice(chunk, chunk * 2);
+      bloques["EXTRAS"] = [];
+    }
+    const getB = k => (bloques[k] || []).join("\n").replace(/\*\*/g, "").replace(/##\s*/g, "").replace(/^[\s\n]+|[\s\n]+$/g, "") || contenido.substring(0, 500);
+    const AZUL = "#1B4F8A", AZUL_CL = "#D6E4F7", NEGRO = "#000000", GRIS = "#F2F2F2", BLANCO = "#FFFFFF", GRIS_B = "#CCCCCC";
+    const doc = new PDFDocument({ margin: 30, size: "LETTER", bufferPages: true }); const buffers = []; doc.on("data", d => buffers.push(d)); const fin = new Promise(r => doc.on("end", r));
+    const FB = "Helvetica-Bold", FN = "Helvetica", FI = "Helvetica-Oblique"; const ML = 30, PW = doc.page.width - 60;
+    const border = () => { doc.rect(4, 4, doc.page.width - 8, doc.page.height - 8).lineWidth(2).strokeColor(AZUL).stroke(); doc.rect(7, 7, doc.page.width - 14, doc.page.height - 14).lineWidth(0.5).strokeColor(AZUL_CL).stroke(); }; border();
+    const HY = 16, HH = 88; doc.rect(ML, HY, PW, HH).fill(BLANCO); doc.rect(ML, HY, PW, HH).lineWidth(1).strokeColor(AZUL).stroke();
+    const la = logoPath ? path.join(__dirname, "..", logoPath) : null; if (la && fs.existsSync(la)) { try { doc.image(la, ML + 3, HY + 4, { width: 78, height: 78, fit: [78, 78] }); } catch (_) { doc.rect(ML + 3, HY + 4, 78, 78).fill(AZUL_CL); } } else { doc.rect(ML + 3, HY + 4, 78, 78).fill(AZUL_CL); doc.font(FB).fontSize(7).fillColor(AZUL).text("ESCUDO", ML + 3, HY + 37, { width: 78, align: "center" }); }
+    const ba = banderaPath ? path.join(__dirname, "..", banderaPath) : null; if (ba && fs.existsSync(ba)) { try { doc.image(ba, ML + PW - 81, HY + 4, { width: 78, height: 78, fit: [78, 78] }); } catch (_) { doc.rect(ML + PW - 81, HY + 4, 78, 78).fill(AZUL_CL); } } else { doc.rect(ML + PW - 81, HY + 4, 78, 78).fill(AZUL_CL); doc.font(FB).fontSize(7).fillColor(AZUL).text("BANDERA", ML + PW - 81, HY + 37, { width: 78, align: "center" }); }
+    doc.moveTo(ML + 84, HY + 6).lineTo(ML + 84, HY + HH - 6).strokeColor(AZUL).lineWidth(0.5).stroke(); doc.moveTo(ML + PW - 84, HY + 6).lineTo(ML + PW - 84, HY + HH - 6).strokeColor(AZUL).lineWidth(0.5).stroke();
+    const CX = ML + 88, CW = PW - 176; doc.font(FB).fontSize(12).fillColor(AZUL).text((institucion || "INSTITUCIÓN EDUCATIVA").toUpperCase(), CX, HY + 10, { width: CW, align: "center" }); doc.font(FN).fontSize(7).fillColor("#444").text("Aprobado según Decreto No. 0001295 del 04 Noviembre de 2009", CX, HY + 30, { width: CW, align: "center" }).text("De la Secretaría de Educación del Caquetá", CX, HY + 41, { width: CW, align: "center" }); doc.font(FB).fontSize(8).fillColor(AZUL).text(`${ciudad || "Valparaíso"} - Caquetá`, CX, HY + 55, { width: CW, align: "center" }); doc.font(FB).fontSize(10).fillColor(AZUL).text("PLAN DE AULA", CX, HY + 70, { width: CW, align: "center" }); doc.y = HY + HH + 10;
+    const tabla = (filas, colWidths) => { if (doc.y > doc.page.height - 80) { doc.addPage(); border(); doc.y = 30; } let rowY = doc.y; for (const fila of filas) { let maxH = 18; fila.forEach((c, i) => { doc.font(c.bold ? FB : FN).fontSize(c.fs || 9); const h = Math.max(18, doc.heightOfString(c.texto || "", { width: colWidths[i] - 8 }) + 10); if (h > maxH) maxH = h; }); if (rowY + maxH > doc.page.height - 40) { doc.addPage(); border(); rowY = 30; } let colX = ML; fila.forEach((c, i) => { const w = colWidths[i]; doc.rect(colX, rowY, w, maxH).fill(c.fill || BLANCO); doc.rect(colX, rowY, w, maxH).lineWidth(0.4).strokeColor(GRIS_B).stroke(); doc.font(c.bold ? FB : FN).fontSize(c.fs || 9).fillColor(c.color || NEGRO).text(c.texto || "", colX + 4, rowY + 4, { width: w - 8, align: c.align || (c.bold ? "center" : "justify") }); colX += w; }); rowY += maxH; } doc.y = rowY + 3; };
+    const az = (t, o = {}) => ({ texto: t, fill: AZUL, color: BLANCO, bold: true, fs: 10, align: "center", ...o }); const gr = (t, o = {}) => ({ texto: t, fill: GRIS, color: NEGRO, bold: true, fs: 9, ...o }); const nm = (t, o = {}) => ({ texto: t, fill: BLANCO, color: NEGRO, bold: false, fs: 9, ...o });
+    const ex = getB("EXTRAS");
+    const obj = ex.match(/OBJETIVO[:\s\n]+([^\n]{20,}[\s\S]*?)(?=\nCOMPETENCIA:|\nESTANDAR:|\nDBA:|\nINDICADOR|$)/i)?.[1]?.trim() || "Desarrollar competencias.";
+    const rec = ex.match(/RECURSOS[:\s]+([\s\S]*?)(?=WEBGRAFIA:|$)/i)?.[1]?.trim() || "Talento humano.";
+    const web = ex.match(/WEBGRAFIA[:\s]+([\s\S]*?)$/i)?.[1]?.trim() || "MEN lineamientos.";
+    const evl = ex.match(/EVALUACION[:\s]+([\s\S]*?)(?=RECURSOS:|WEBGRAFIA:|$)/i)?.[1]?.trim() || "Oral y escrita.";
+    const i1 = ex.match(/INDICADOR1[:\s]+([\s\S]*?)(?=INDICADOR2:|$)/i)?.[1]?.trim() || "";
+    const i2 = ex.match(/INDICADOR2[:\s]+([\s\S]*?)(?=INDICADOR3:|$)/i)?.[1]?.trim() || "";
+    const i3 = ex.match(/INDICADOR3[:\s]+([\s\S]*?)(?=EVIDENCIA:|$)/i)?.[1]?.trim() || "";
+    const dba = ex.match(/DBA[:\s\n]+([\s\S]*?)(?=ESTANDAR:|INDICADOR|EVIDENCIA:|CRITERIO:|RECURSOS:|WEBGRAFIA:|$)/i)?.[1]?.trim() || "";
+    const std = ex.match(/ESTANDAR[:\s\n]+([\s\S]*?)(?=DBA:|INDICADOR|EVIDENCIA:|CRITERIO:|$)/i)?.[1]?.trim() || "";
+    const evd = ex.match(/EVIDENCIA[:\s]+([\s\S]*?)(?=CRITERIO:|RECURSOS:|$)/i)?.[1]?.trim() || "";
+    tabla([[gr("Docente:", { fs: 8 }), nm(docente || "", { fs: 8 }), gr("Sede:", { fs: 8 }), nm(institucion || "", { fs: 8 })]], [PW * .15, PW * .35, PW * .1, PW * .4]);
+    tabla([[az("INFORMACIÓN GENERAL")]], [PW]);
+    tabla([[gr("NIVEL", { fs: 8 }), nm(nivelLabel, { fs: 8 }), gr("GRADO", { fs: 8 }), nm(grado || "", { fs: 8 }), gr("ÁREA", { fs: 8 }), nm(area || "", { fs: 8 }), gr("SEM", { fs: 8 }), nm("1", { fs: 8 })]], [PW * .08, PW * .14, PW * .08, PW * .1, PW * .08, PW * .4, PW * .06, PW * .06]);
+    tabla([[gr("TEMA", { fs: 8 }), nm(tema, { fs: 8 })]], [PW * .12, PW * .88]);
+    tabla([[gr("OBJETIVO", { fs: 8 }), nm(obj.substring(0, 300), { fs: 8 })]], [PW * .14, PW * .86]);
+    tabla([[gr("RECURSOS", { fs: 8 }), nm(rec.substring(0, 200), { fs: 8 })]], [PW * .14, PW * .86]);
+    doc.moveDown(0.3); tabla([[az("REFERENTES NACIONALES DE CALIDAD")]], [PW]);
+    tabla([[gr("ESTÁNDARES", { fs: 8 }), nm(std.substring(0, 250), { fs: 8 })], [gr("DBA", { fs: 8 }), nm(dba.substring(0, 250), { fs: 8 })]], [PW * .22, PW * .78]);
+    tabla([[gr("INDICADORES", { fs: 8 }), gr("SABER", { fs: 8, align: "center" }), gr("HACER", { fs: 8, align: "center" }), gr("SER", { fs: 8, align: "center" })], [nm("Por dimensión", { fs: 8 }), nm(i1.substring(0, 400), { fs: 8 }), nm(i2.substring(0, 400), { fs: 8 }), nm(i3.substring(0, 300), { fs: 8 })]], [PW * .14, PW * .29, PW * .29, PW * .28]);
+    doc.moveDown(0.3); tabla([[az("METODOLOGÍA EN SECUENCIA DIDÁCTICA")]], [PW]);
+    const ps = [{ t: "INICIO (APERTURA Y MOTIVACIÓN)", c: getB("APERTURA").substring(0, 600) }, { t: "EXPLORACIÓN (SABERES PREVIOS)", c: getB("SABERES_PREVIOS").substring(0, 400) }, { t: "ESTRUCTURACIÓN (DESARROLLO Y TALLER)", c: (getB("DESARROLLO") + " " + getB("TALLER")).substring(0, 1000) }, { t: "TRANSFERENCIA (RETROALIMENTACIÓN)", c: getB("RETROALIMENTACION").substring(0, 800) }, { t: "REFUERZO (CIERRE Y TAREA)", c: (getB("CIERRE") + "\n" + getB("TAREA")).substring(0, 800) }];
+    for (const s of ps) tabla([[gr(s.t, { fs: 8, align: "left" })], [nm(s.c || ".", { fs: 8 })]], [PW]);
+    doc.moveDown(0.3); tabla([[az("EVALUACIÓN")]], [PW]);
+    tabla([[gr("DESEMPEÑOS", { fs: 8, align: "center" }), gr("EVALUACIÓN", { fs: 8, align: "center" })], [nm(evd.substring(0, 200), { fs: 8 }), nm(evl.substring(0, 350), { fs: 8 })]], [PW * .4, PW * .6]);
+    tabla([[gr("WEBGRAFÍA", { fs: 8, align: "center" })], [nm(web.substring(0, 350), { fs: 8 })]], [PW]);
+    doc.moveDown(0.8); const fY = doc.y;
+    doc.font(FN).fontSize(9).fillColor(NEGRO).text("_______________________________", ML + 20, fY, { width: PW / 2 - 40, align: "center" }).text("_______________________________", ML + PW / 2 + 20, fY, { width: PW / 2 - 40, align: "center" });
+    doc.font(FB).fontSize(9).text(docente || "Docente", ML + 20, fY + 14, { width: PW / 2 - 40, align: "center" }).text("Coordinador / Rector", ML + PW / 2 + 20, fY + 14, { width: PW / 2 - 40, align: "center" });
+    doc.font(FI).fontSize(8).fillColor("#555").text(cargo || "Docente", ML + 20, fY + 26, { width: PW / 2 - 40, align: "center" }).text("Vo. Bo.", ML + PW / 2 + 20, fY + 26, { width: PW / 2 - 40, align: "center" });
+    const totalPags = doc.bufferedPageRange().count; for (let i = 0; i < totalPags; i++) { doc.switchToPage(i); const py = doc.page.height - 20; doc.rect(ML, py - 2, PW, 14).fill(AZUL); doc.font(FI).fontSize(7).fillColor(BLANCO).text(`${institucion || "I.E."}  ·  ${area} Grado ${grado}°  ·  ${tema}  ·  Pág. ${i + 1}/${totalPags}`, ML, py + 1, { width: PW, align: "center" }); }
+    doc.end(); await fin; const pdfBuffer = Buffer.concat(buffers);
+    const nombre = `PlanAula_${area}_Grado${grado}_${tema.substring(0, 20).replace(/\s+/g, "_")}.pdf`;
+    res.setHeader("Content-Type", "application/pdf"); res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(nombre)}"`); res.send(pdfBuffer);
+  } catch (e) { console.error("❌ PDF:", e.message); res.status(500).json({ mensaje: e.message }); }
+});
+
 
 // ══════════════════════════════════════════════════════
 //  ASIGNACIONES DE DOCENTES
